@@ -4,9 +4,9 @@ const {
   getPopularServiceProviders,
   getProviderDetails,
   bookProviderDirectly
-} = require('../controllers/popularController');
-const { protect } = require('../middleware/auth');
-const { uploadMultiple, handleUploadErrors } = require('../config/multer');
+} = require('../../controllers/popularController');
+const { protect } = require('../../middleware/auth');
+const { uploadMultiple, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
 

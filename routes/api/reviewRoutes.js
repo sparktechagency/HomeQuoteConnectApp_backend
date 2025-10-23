@@ -5,8 +5,8 @@ const {
   getUserReviews,
   respondToReview,
   getPendingReviews
-} = require('../controllers/reviewController');
-const { protect } = require('../middleware/auth');
+} = require('../../controllers/reviewController');
+const { protect } = require('../../middleware/auth');
 
 const router = express.Router();
 

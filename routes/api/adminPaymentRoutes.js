@@ -7,13 +7,13 @@ const {
   processRefund,
   getProviderWallets,
   getPlatformEarnings
-} = require('../controllers/adminPaymentController');
+} = require('../../controllers/adminPaymentController');
 const {
   updateSubscriptionPlans,
   updateCreditPackages,
   getSubscriptionAnalytics
-} = require('../controllers/adminSubscriptionController');
-const { protect, authorize } = require('../middleware/auth');
+} = require('../../controllers/adminSubscriptionController');
+const { protect, authorize } = require('../../middleware/auth');
 
 const router = express.Router();
 

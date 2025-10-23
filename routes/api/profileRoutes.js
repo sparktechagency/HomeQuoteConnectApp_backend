@@ -9,9 +9,9 @@ const {
   changePassword,
   deleteAccount,
   updateOnlineStatus
-} = require('../controllers/profileController');
-const { protect } = require('../middleware/auth');
-const { uploadSingle, uploadFields, handleUploadErrors } = require('../config/multer');
+} = require('../../controllers/profileController');
+const { protect } = require('../../middleware/auth');
+const { uploadSingle, uploadFields, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
 

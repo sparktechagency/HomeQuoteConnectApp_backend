@@ -51,29 +51,29 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Initialize Socket Handlers
-const initializeSocket = require('./socket/initializeSocket');
+const initializeSocket = require('./socket/initializeSockets');
 initializeSocket(io);
 
 // Make io accessible to routes
 app.set('io', io);
 
 // Routes
-app.use('/api/health', require('./routes/healthRoutes'));
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/profile', require('./routes/profileRoutes'));
-app.use('/api/jobs', require('./routes/jobRoutes'));
-app.use('/api/quotes', require('./routes/quoteRoutes'));
-app.use('/api/provider', require('./routes/providerRoutes'));
-app.use('/api/chats', require('./routes/chatRoutes'));
-app.use('/api/payments', require('./routes/paymentRoutes'));
-app.use('/api/reviews', require('./routes/reviewRoutes'));
-app.use('/api/support', require('./routes/supportRoutes'));
-app.use('/api/subscriptions', require('./routes/subscriptionRoutes'));
-app.use('/api/popular', require('./routes/popularRoutes'));
-app.use('/api/admin', require('./routes/adminRoutes'));
-app.use('/api/admin', require('./routes/adminCategoryRoutes'));
-app.use('/api/admin', require('./routes/adminPaymentRoutes'));
-app.use('/api/webhooks', require('./routes/webhookRoutes'));
+app.use('/api/health', require('./routes/api/healthRoutes'));
+app.use('/api/auth', require('./routes/api/authRoutes'));
+app.use('/api/profile', require('./routes/api/profileRoutes'));
+app.use('/api/jobs', require('./routes/api/jobRoutes'));
+app.use('/api/quotes', require('./routes/api/quoteRoutes'));
+app.use('/api/provider', require('./routes/api/providerRoutes'));
+app.use('/api/chats', require('./routes/api/chatRoutes'));
+app.use('/api/payments', require('./routes/api/paymentRoutes'));
+app.use('/api/reviews', require('./routes/api/reviewRoutes'));
+app.use('/api/support', require('./routes/api/supportRoutes'));
+app.use('/api/subscriptions', require('./routes/api/subscriptionRoutes'));
+app.use('/api/popular', require('./routes/api/popularRoutes'));
+app.use('/api/admin', require('./routes/api/adminRoutes'));
+app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
+app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
+app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
 
 // 404 Handler
 app.use(notFound);

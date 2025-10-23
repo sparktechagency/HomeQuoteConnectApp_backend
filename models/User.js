@@ -191,7 +191,8 @@ userSchema.add({
 
 // Index for location-based queries
 userSchema.index({ location: '2dsphere' });
-userSchema.index({ email: 1 });
+// `email` field is declared with `unique: true` above which creates a unique index.
+// Avoid declaring the same index again to prevent duplicate-index warnings.
 userSchema.index({ role: 1 });
 
 // Virtual for profile completion

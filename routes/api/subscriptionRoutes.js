@@ -7,8 +7,8 @@ const {
   getCreditPackages,
   purchaseCredits,
   getCreditActivity
-} = require('../controllers/subscriptionController');
-const { protect } = require('../middleware/auth');
+} = require('../../controllers/subscriptionController');
+const { protect } = require('../../middleware/auth');
 
 const router = express.Router();
 

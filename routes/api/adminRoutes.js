@@ -5,8 +5,8 @@ const {
   getUsers,
   toggleUserBlock,
   verifyProvider
-} = require('../controllers/adminController');
-const { protect, authorize } = require('../middleware/auth');
+} = require('../../controllers/adminController');
+const { protect, authorize } = require('../../middleware/auth');
 
 const router = express.Router();
 

@@ -59,7 +59,8 @@ const walletSchema = new mongoose.Schema({
 });
 
 // Indexes
-walletSchema.index({ user: 1 });
+// `user` field is declared with `unique: true` above which creates the index,
+// so we avoid declaring the same index again to prevent duplicate-index warnings.
 walletSchema.index({ availableBalance: -1 });
 
 // Method to add earnings

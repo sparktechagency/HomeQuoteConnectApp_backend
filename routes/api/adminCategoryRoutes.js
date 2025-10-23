@@ -9,9 +9,9 @@ const {
   createSpecialization,
   updateSpecialization,
   deleteSpecialization
-} = require('../controllers/adminCategoryController');
-const { protect, authorize } = require('../middleware/auth');
-const { uploadSingle, handleUploadErrors } = require('../config/multer');
+} = require('../../controllers/adminCategoryController');
+const { protect, authorize } = require('../../middleware/auth');
+const { uploadSingle, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
 

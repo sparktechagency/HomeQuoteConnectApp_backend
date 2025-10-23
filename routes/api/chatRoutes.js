@@ -6,9 +6,9 @@ const {
   getChatMessages,
   sendMessage,
   getUnreadCount
-} = require('../controllers/chatController');
-const { protect } = require('../middleware/auth');
-const { uploadMultiple, handleUploadErrors } = require('../config/multer');
+} = require('../../controllers/chatController');
+const { protect } = require('../../middleware/auth');
+const { uploadMultiple, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
 

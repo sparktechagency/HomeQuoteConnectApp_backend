@@ -7,8 +7,8 @@ const {
   setupStripeConnect,
   getWallet,
   requestWithdrawal
-} = require('../controllers/paymentController');
-const { protect } = require('../middleware/auth');
+} = require('../../controllers/paymentController');
+const { protect } = require('../../middleware/auth');
 
 const router = express.Router();
 

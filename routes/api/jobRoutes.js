@@ -10,9 +10,9 @@ const {
   cancelJob,
   getPopularCategories,
   getJobsByCategory
-} = require('../controllers/jobController');
-const { protect } = require('../middleware/auth');
-const { uploadMultiple, handleUploadErrors } = require('../config/multer');
+} = require('../../controllers/jobController');
+const { protect } = require('../../middleware/auth');
+const { uploadMultiple, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
 

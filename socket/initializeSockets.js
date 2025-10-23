@@ -1,7 +1,7 @@
 // Update the main socket handler to include chat and authentication
-const { socketHandler } = require('./socket/socketHandler');
-const chatHandler = require('./socket/chatHandler');
-const { verifyToken } = require('./utils/generateToken');
+const { socketHandler } = require('./socketHandler');
+const chatHandler = require('./chatHandler');
+const { verifyToken } = require('../utils/generateToken');
 
 const initializeSocket = (io) => {
   // Authentication middleware for socket

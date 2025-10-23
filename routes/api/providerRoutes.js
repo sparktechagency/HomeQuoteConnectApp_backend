@@ -6,8 +6,8 @@ const {
   getTodayJobs,
   markJobAsComplete,
   getProviderDashboard
-} = require('../controllers/providerController');
-const { protect } = require('../middleware/auth');
+} = require('../../controllers/providerController');
+const { protect } = require('../../middleware/auth');
 
 const router = express.Router();
 

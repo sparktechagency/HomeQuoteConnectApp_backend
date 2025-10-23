@@ -8,8 +8,8 @@ const {
   cancelQuote,
   getMyQuotes,
   getQuotesByJob
-} = require('../controllers/quoteController');
-const { protect } = require('../middleware/auth');
+} = require('../../controllers/quoteController');
+const { protect } = require('../../middleware/auth');
 
 const router = express.Router();
 

@@ -7,8 +7,8 @@ const {
   sendSupportMessage,
   joinLiveChat,
   getSupportStatistics
-} = require('../controllers/supportController');
-const { protect, authorize } = require('../middleware/auth');
+} = require('../../controllers/supportController');
+const { protect, authorize } = require('../../middleware/auth');
 
 const router = express.Router();
 
