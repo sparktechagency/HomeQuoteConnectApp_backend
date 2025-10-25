@@ -48,7 +48,7 @@ app.use('/api/', apiLimiter);
 // Body Parsing Middleware
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Initialize Socket Handlers
 const initializeSocket = require('./socket/initializeSockets');
@@ -89,9 +89,11 @@ process.on('SIGTERM', () => {
   });
 });
 
+const HOST = process.env.HOST || '0.0.0.0';
+
 // Start Server
-server.listen(PORT, () => {
-  console.log(`🚀 Server running in ${NODE_ENV} mode on port ${PORT}`);
+server.listen(PORT, '10.10.20.30', () => {
+  console.log(`🚀 Server running in ${NODE_ENV} mode at http://${HOST}:${PORT}`);
 });
 
 module.exports = app;

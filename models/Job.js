@@ -45,14 +45,19 @@ const jobSchema = new mongoose.Schema({
       required: true
     },
     address: {
-      houseNumber: String,
-      streetNumber: String,
-      completeAddress: String,
-      city: String,
-      state: String,
-      country: String,
-      zipCode: String
-    }
+    type: String, // <- change from object to string
+    default: ''
+  }
+    // address: String
+    // {
+    //   houseNumber: String,
+    //   streetNumber: String,
+    //   completeAddress: String,
+    //   city: String,
+    //   state: String,
+    //   country: String,
+    //   zipCode: String
+    // }
   },
   
   // Timing Information

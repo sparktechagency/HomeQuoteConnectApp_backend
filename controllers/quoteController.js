@@ -146,11 +146,7 @@ const updateQuote = async (req, res) => {
       updateReason
     } = req.body;
 
-    // Find the quote
-    const quote = await Quote.findOne({
-      _id: id,
-      provider: req.user._id
-    }).populate('job');
+    const quote = await Quote.findOne({ _id: id, provider: req.user._id }).populate('job');
 
     if (!quote) {
       return res.status(404).json({
@@ -166,9 +162,8 @@ const updateQuote = async (req, res) => {
       });
     }
 
-    // Create updated quote
     const updateData = {
-      price: price ? parseFloat(price) : quote.price,
+      price: price !== undefined ? parseFloat(price) : quote.price,
       description: description || quote.description,
       isAvailable: isAvailable !== undefined ? isAvailable : quote.isAvailable,
       proposedDate: proposedDate ? new Date(proposedDate) : quote.proposedDate,
@@ -180,12 +175,10 @@ const updateQuote = async (req, res) => {
 
     const updatedQuote = await quote.createUpdatedQuote(updateData);
 
-    // Populate the updated quote
     const populatedQuote = await Quote.findById(updatedQuote._id)
       .populate('provider', 'fullName profilePhoto businessName averageRating totalReviews experienceLevel')
       .populate('job', 'title client serviceCategory');
 
-    // Notify client about updated quote
     if (req.app.get('io')) {
       sendNotificationToUser(req.app.get('io'), quote.job.client, {
         type: 'quote_updated',

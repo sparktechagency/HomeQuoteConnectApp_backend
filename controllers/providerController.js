@@ -37,16 +37,13 @@ const getNearbyJobs = async (req, res) => {
     }
 
     const coordinates = [parseFloat(longitude), parseFloat(latitude)];
+    const radiusInRadians = parseFloat(radius) / 6371000; // Convert meters to radians
 
     // Build filter object
     const filter = {
       'location.coordinates': {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: coordinates
-          },
-          $maxDistance: parseInt(radius)
+        $geoWithin: {
+          $centerSphere: [coordinates, radiusInRadians]
         }
       },
       status: 'pending',
@@ -89,7 +86,7 @@ const getNearbyJobs = async (req, res) => {
       .populate('serviceCategory', 'title image')
       .populate('specializations', 'title')
       .sort({ urgency: 1, createdAt: -1 })
-      .limit(limit * 1)
+      .limit(parseInt(limit))
       .skip((page - 1) * limit);
 
     const total = await Job.countDocuments(filter);
@@ -99,7 +96,7 @@ const getNearbyJobs = async (req, res) => {
       data: {
         jobs,
         pagination: {
-          current: page,
+          current: parseInt(page),
           pages: Math.ceil(total / limit),
           total
         },

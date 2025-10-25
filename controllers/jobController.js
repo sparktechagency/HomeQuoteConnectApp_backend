@@ -31,22 +31,50 @@ const createJob = async (req, res) => {
       specificInstructions
     } = req.body;
 
-    // Parse location data
+    // Parse location safely
     let locationData;
-    try {
-      locationData = typeof location === 'string' ? JSON.parse(location) : location;
-    } catch (error) {
+    if (!location) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid location data format'
+        message: 'Location is required'
+      });
+    }
+
+    if (typeof location === 'string') {
+      try {
+        locationData = JSON.parse(location);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid location format. Must be JSON object.'
+        });
+      }
+    } else if (typeof location === 'object') {
+      locationData = location;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid location data type'
       });
     }
 
     // Validate coordinates
-    if (!locationData.coordinates || !Array.isArray(locationData.coordinates) || locationData.coordinates.length !== 2) {
+    if (
+      !locationData.coordinates ||
+      !Array.isArray(locationData.coordinates) ||
+      locationData.coordinates.length !== 2
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Valid coordinates are required [longitude, latitude]'
+      });
+    }
+
+    // Ensure address is a string
+    if (typeof locationData.address !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Location address must be a string'
       });
     }
 
@@ -56,7 +84,9 @@ const createJob = async (req, res) => {
       description: specificInstructions || description,
       client: req.user._id,
       serviceCategory,
-      specializations: Array.isArray(specializations) ? specializations : JSON.parse(specializations || '[]'),
+      specializations: Array.isArray(specializations)
+        ? specializations
+        : JSON.parse(specializations || '[]'),
       location: locationData,
       urgency,
       preferredDate: preferredDate ? new Date(preferredDate) : undefined,
@@ -78,11 +108,9 @@ const createJob = async (req, res) => {
       .populate('specializations', 'title category');
 
     // Update category popularity
-    await Category.findByIdAndUpdate(serviceCategory, {
-      $inc: { popularity: 1 }
-    });
+    await Category.findByIdAndUpdate(serviceCategory, { $inc: { popularity: 1 } });
 
-    // Notify nearby providers (socket implementation)
+    // Notify nearby providers (socket)
     if (req.app.get('io')) {
       req.app.get('io').emit('new-job-available', {
         job: populatedJob,
@@ -105,6 +133,7 @@ const createJob = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Get all jobs with filtering and pagination
 // @route   GET /api/jobs
@@ -161,15 +190,16 @@ const getJobs = async (req, res) => {
       filter.$text = { $search: search };
     }
 
-    // Location-based filter
+    // Location-based filter using $geoWithin
     if (latitude && longitude) {
-      filter['location.coordinates'] = {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [parseFloat(longitude), parseFloat(latitude)]
-          },
-          $maxDistance: parseInt(radius)
+      const earthRadiusInMeters = 6378137;
+      const radiusInMeters = parseInt(radius);
+      filter['location'] = {
+        $geoWithin: {
+          $centerSphere: [
+            [parseFloat(longitude), parseFloat(latitude)],
+            radiusInMeters / earthRadiusInMeters
+          ]
         }
       };
     }
@@ -244,6 +274,7 @@ const getJobs = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Get today's jobs
 // @route   GET /api/jobs/today
