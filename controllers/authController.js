@@ -12,41 +12,103 @@ const sendOTP = async (req, res) => {
   try {
     const { email, purpose = 'signup' } = req.body;
 
-    // Check if user already exists for signup
-    if (purpose === 'signup') {
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: 'User already exists with this email'
-        });
-      }
-    }
-
-    // Generate and save OTP
-    const otpRecord = await OTP.generateOTP(email, purpose);
-    
-    // Send OTP via email
-    const emailSent = await sendOTPEmail(email, otpRecord.otp, 'User');
-    
-    if (!emailSent) {
-      await OTP.findByIdAndDelete(otpRecord._id);
-      return res.status(500).json({
+    if (!email) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to send OTP email'
+        message: 'Email is required'
       });
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent successfully',
-      data: {
-        email,
-        purpose,
-        expiresAt: otpRecord.expiresAt
-      }
-    });
+    // 🔍 Check user existence
+    const existingUser = await User.findOne({ email });
 
+    if (purpose === 'signup') {
+      if (existingUser) {
+        if (existingUser.isVerified) {
+          // ✅ Already verified — do not send OTP
+          return res.status(400).json({
+            success: false,
+            message: 'User already verified. Please log in instead.'
+          });
+        } else {
+          // 🔁 User exists but not verified — resend OTP for verification
+          const otpRecord = await OTP.generateOTP(email, 'signup');
+
+          // Send OTP email
+          const emailSent = await sendOTPEmail(email, otpRecord.otp, 'User');
+          if (!emailSent) {
+            await OTP.findByIdAndDelete(otpRecord._id);
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to send verification OTP email'
+            });
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: 'Verification OTP re-sent successfully',
+            data: {
+              email,
+              purpose: 'signup',
+              expiresAt: otpRecord.expiresAt
+            }
+          });
+        }
+      }
+
+      // 🆕 New user — proceed with signup OTP
+      const otpRecord = await OTP.generateOTP(email, 'signup');
+      const emailSent = await sendOTPEmail(email, otpRecord.otp, 'User');
+
+      if (!emailSent) {
+        await OTP.findByIdAndDelete(otpRecord._id);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send OTP email'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Signup OTP sent successfully',
+        data: {
+          email,
+          purpose,
+          expiresAt: otpRecord.expiresAt
+        }
+      });
+    }
+
+    // If purpose is NOT signup (like password reset)
+    if (purpose !== 'signup') {
+      if (!existingUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'No user found with this email'
+        });
+      }
+
+      const otpRecord = await OTP.generateOTP(email, purpose);
+      const emailSent = await sendOTPEmail(email, otpRecord.otp, 'User');
+
+      if (!emailSent) {
+        await OTP.findByIdAndDelete(otpRecord._id);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send OTP email'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'OTP sent successfully',
+        data: {
+          email,
+          purpose,
+          expiresAt: otpRecord.expiresAt
+        }
+      });
+    }
   } catch (error) {
     console.error('Send OTP error:', error);
     res.status(500).json({
@@ -57,6 +119,7 @@ const sendOTP = async (req, res) => {
   }
 };
 
+
 // @desc    Verify OTP
 // @route   POST /api/auth/verify-otp
 // @access  Public
@@ -64,7 +127,14 @@ const verifyOTP = async (req, res) => {
   try {
     const { email, otp, purpose } = req.body;
 
-    // Find the latest OTP for this email and purpose
+    if (!email || !otp || !purpose) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, OTP, and purpose are required'
+      });
+    }
+
+    // Find the latest unused OTP
     const otpRecord = await OTP.findOne({
       email,
       purpose,
@@ -78,26 +148,57 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // Verify OTP
+    // Verify OTP match and expiration
     await otpRecord.verifyOTP(otp);
 
-    res.status(200).json({
+    // 🔄 Mark OTP as used
+    otpRecord.isUsed = true;
+    await otpRecord.save();
+
+    // Purpose-based logic
+    let actionMessage = 'OTP verified successfully';
+
+    if (purpose === 'signup' || purpose === 'verify') {
+      // ✅ Mark user verified
+      const user = await User.findOne({ email });
+      if (user) {
+        user.isVerified = true;
+        await user.save();
+        actionMessage = 'User verified successfully';
+      } else if (purpose === 'signup') {
+        // 🆕 (Optional) you can create user here if not exists yet
+        // const newUser = await User.create({ email, isVerified: true });
+      }
+    }
+
+    if (purpose === 'resetPassword') {
+      // ⚙️ For password reset, you can return a token or set a flag
+      actionMessage = 'OTP verified. You can now reset your password.';
+    }
+
+    if (purpose === 'changeEmail') {
+      actionMessage = 'OTP verified. Email change confirmed.';
+    }
+
+    return res.status(200).json({
       success: true,
-      message: 'OTP verified successfully',
+      message: actionMessage,
       data: {
         email,
         purpose,
-        verified: true
+        isVerified: true
       }
     });
 
   } catch (error) {
-    res.status(400).json({
+    console.error('Verify OTP error:', error);
+    return res.status(400).json({
       success: false,
-      message: error.message
+      message: error.message || 'Error verifying OTP'
     });
   }
 };
+
 
 // @desc    Register user (Client or Provider)
 // @route   POST /api/auth/register
@@ -123,12 +224,12 @@ const register = async (req, res) => {
     } = req.body;
 
     // Validation
-    if (password !== confirmPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Passwords do not match'
-      });
-    }
+    // if (password !== confirmPassword) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Passwords do not match'
+    //   });
+    // }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -171,6 +272,20 @@ const register = async (req, res) => {
       
       // Give free 25 credits to new providers
       userData.credits = 25;
+    }
+
+    // If a profile photo was uploaded via multipart/form-data, upload to Cloudinary
+    if (req.file && req.file.buffer) {
+      try {
+        const uploadResult = await uploadToCloudinary(req.file.buffer, 'profile_photos');
+        userData.profilePhoto = {
+          public_id: uploadResult.public_id,
+          url: uploadResult.secure_url
+        };
+      } catch (uploadErr) {
+        console.error('Profile photo upload error:', uploadErr);
+        // Don't block registration for photo upload failures; continue without photo
+      }
     }
 
     const user = await User.create(userData);

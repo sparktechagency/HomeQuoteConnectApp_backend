@@ -4,7 +4,8 @@ const {
   getDashboardStats,
   getUsers,
   toggleUserBlock,
-  verifyProvider
+  verifyProvider,
+  getProviders
 } = require('../../controllers/adminController');
 const { protect, authorize } = require('../../middleware/auth');
 
@@ -17,6 +18,7 @@ router.use(authorize('admin'));
 // Admin routes
 router.get('/dashboard', getDashboardStats);
 router.get('/users', getUsers);
+router.get('/providers', getProviders);
 router.put('/users/:id/block', toggleUserBlock);
 router.put('/providers/:id/verify', verifyProvider);
 

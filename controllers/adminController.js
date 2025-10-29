@@ -290,8 +290,26 @@ const verifyProvider = async (req, res) => {
       provider.verificationStatus = 'verified';
       // Give 25 free credits upon verification
       provider.credits += 25;
+      // Mark individual verification documents as approved if present
+      if (provider.verificationDocuments) {
+        if (provider.verificationDocuments.businessLicense) {
+          provider.verificationDocuments.businessLicense.status = 'approved';
+        }
+        if (provider.verificationDocuments.certificate) {
+          provider.verificationDocuments.certificate.status = 'approved';
+        }
+      }
     } else if (status === 'rejected') {
       provider.verificationStatus = 'rejected';
+      // Mark documents as rejected when overall verification is rejected
+      if (provider.verificationDocuments) {
+        if (provider.verificationDocuments.businessLicense) {
+          provider.verificationDocuments.businessLicense.status = 'rejected';
+        }
+        if (provider.verificationDocuments.certificate) {
+          provider.verificationDocuments.certificate.status = 'rejected';
+        }
+      }
     } else {
       return res.status(400).json({
         success: false,
@@ -360,9 +378,78 @@ const calculateDateRange = (period) => {
   return { startDate, endDate };
 };
 
+// (exports moved to the end after all function declarations)
+
+// @desc    Get providers list with verification documents and basic info
+// @route   GET /api/admin/providers
+// @access  Private (Admin only)
+const getProviders = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can access providers list'
+      });
+    }
+
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      verificationStatus,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const filter = { role: 'provider' };
+
+    if (verificationStatus) filter.verificationStatus = verificationStatus;
+
+    if (search) {
+      filter.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { businessName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const sortOptions = {};
+    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const providers = await User.find(filter)
+      .select('fullName phoneNumber email businessName verificationDocuments verificationStatus profilePhoto createdAt')
+      .sort(sortOptions)
+      .limit(parseInt(limit, 10))
+      .skip((parseInt(page, 10) - 1) * parseInt(limit, 10));
+
+    const total = await User.countDocuments(filter);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        providers,
+        pagination: {
+          current: parseInt(page, 10),
+          pages: Math.ceil(total / parseInt(limit, 10)),
+          total
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get providers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching providers',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getUsers,
   toggleUserBlock,
-  verifyProvider
+  verifyProvider,
+  getProviders
 };

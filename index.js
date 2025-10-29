@@ -29,10 +29,12 @@ connectDB();
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-app.use(cors({
-  origin: process.env.CLIENT_URL || "*",
-  credentials: true
-}));
+// app.use(cors({
+//   origin: process.env.CLIENT_URL || "*",
+//   credentials: true
+// }));
+
+app.use(cors());
 
 // Logging
 if (NODE_ENV === 'development') {
@@ -42,8 +44,8 @@ if (NODE_ENV === 'development') {
 }
 
 // Rate Limiting
-app.use('/api/auth', authLimiter);
-app.use('/api/', apiLimiter);
+// app.use('/api/auth', authLimiter);
+// app.use('/api/', apiLimiter);
 
 // Body Parsing Middleware
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
