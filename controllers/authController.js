@@ -1,6 +1,8 @@
 // controllers/authController.js
 const OTP = require('../models/OTP');
 const User = require('../models/User');
+const mongoose = require('mongoose');
+
 const { generateToken } = require('../utils/generateToken');
 const { sendOTPEmail } = require('../utils/emailService');
 const { uploadToCloudinary } = require('../utils/cloudinary');
@@ -250,6 +252,32 @@ const register = async (req, res) => {
       }
     }
 
+        let specializationsData = [];
+    if (role === 'provider' && specializations) {
+      if (typeof specializations === 'string') {
+        try {
+          specializationsData = JSON.parse(specializations);
+        } catch (err) {
+          return res.status(400).json({ success: false, message: 'Invalid specializations format' });
+        }
+      } else if (Array.isArray(specializations)) {
+        specializationsData = specializations;
+      } else {
+        return res.status(400).json({ success: false, message: 'Specializations must be an array' });
+      }
+
+      // Ensure all are valid ObjectIds
+  // Ensure all are valid ObjectIds
+specializationsData = specializationsData.map(id => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new Error(`Invalid specialization ID: ${id}`);
+  }
+  return new mongoose.Types.ObjectId(id); // ✅ use 'new'
+});
+
+    }
+
+
     // Create user
     const userData = {
       fullName,
@@ -266,7 +294,7 @@ const register = async (req, res) => {
       userData.businessName = businessName;
       userData.bio = bio;
       userData.experienceLevel = experienceLevel;
-      userData.specializations = specializations;
+      userData.specializations = specializationsData;
       userData.serviceAreas = serviceAreas;
       userData.workingHours = workingHours;
       

@@ -12,6 +12,7 @@ const admin = require('./adminRoutes.js');
 const subscriptions = require ('./subscriptionRoutes.js');
 const popular = require('./popularRoutes.js');
 const adminCategoryRoutes = require('./adminCategoryRoutes.js');
+const categories = require('./categoryRoutes.js');
 const adminPaymentRoutes= require('./adminPaymentRoutes.js');
 
 _.use("/auth", authRouter);
@@ -26,6 +27,7 @@ _.use('/support', support);
 _.use('/admin', admin);
 _.use('/subscriptions', subscriptions);
 _.use('/popular', popular);
+_.use('/categories', categories);
 _.use('/admin', adminCategoryRoutes);
 _.use('/admin', adminPaymentRoutes);
 

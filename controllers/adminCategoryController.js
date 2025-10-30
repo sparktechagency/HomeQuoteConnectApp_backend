@@ -267,9 +267,7 @@ const deleteCategory = async (req, res) => {
   }
 };
 
-// @desc    Get category specializations
-// @route   GET /api/admin/categories/:id/specializations
-// @access  Private (Admin only)
+
 const getCategorySpecializations = async (req, res) => {
   try {
     const { id } = req.params;

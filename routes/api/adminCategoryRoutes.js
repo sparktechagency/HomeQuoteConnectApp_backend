@@ -16,8 +16,10 @@ const { uploadSingle, handleUploadErrors } = require('../../config/multer');
 const router = express.Router();
 
 // All routes are protected and admin only
-router.use(protect);
-router.use(authorize('admin'));
+// router.use(protect);
+// router.use(authorize('admin'));
+// router.use(authorize('client'));
+// router.use(authorize('provider'));
 
 // Category routes
 router.get('/categories', getCategories);

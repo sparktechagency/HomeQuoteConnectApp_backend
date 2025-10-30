@@ -73,6 +73,7 @@ app.use('/api/support', require('./routes/api/supportRoutes'));
 app.use('/api/subscriptions', require('./routes/api/subscriptionRoutes'));
 app.use('/api/popular', require('./routes/api/popularRoutes'));
 app.use('/api/admin', require('./routes/api/adminRoutes'));
+app.use('/api/categories', require('./routes/api/categoryRoutes'));
 app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
