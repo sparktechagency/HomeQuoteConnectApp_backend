@@ -1,9 +1,15 @@
 // controllers/webhookController.js
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const UserSubscription = require('../models/UserSubscription');
 const CreditActivity = require('../models/CreditActivity');
+const Wallet = require('../models/Wallet');
 const { handleSubscriptionPayment } = require('./subscriptionController');
+const Job = require('../models/Job');  
+const { sendNotificationToUser } = require('../socket/socketHandler'); // ✅ Import notifications if used
+
 
 // @desc    Main webhook handler for Stripe events
 // @route   POST /api/webhooks/stripe
@@ -72,82 +78,140 @@ const handlePaymentIntentSucceeded = async (paymentIntent) => {
 
 // Handle job payment success
 const handleJobPaymentSucceeded = async (paymentIntent) => {
-  const { jobId, quoteId, clientId, providerId } = paymentIntent.metadata;
+  const { jobId, clientId, providerId } = paymentIntent.metadata;
+  const totalAmount = paymentIntent.amount_received / 100; // cents to dollars
 
-  const transaction = await Transaction.findOne({
-    stripePaymentIntentId: paymentIntent.id
-  }).populate('job quote');
+  console.log(`✅ Payment succeeded for Job: ${jobId} — Total $${totalAmount}`);
 
+  // Find related transaction
+  const transaction = await Transaction.findOne({ stripePaymentIntentId: paymentIntent.id }).populate('job');
   if (!transaction) {
     throw new Error(`Transaction not found for payment intent: ${paymentIntent.id}`);
   }
 
-  // Update transaction status
+  // 💰 Calculate commission (10%) and provider share
+  const platformCommission = parseFloat((totalAmount * 0.10).toFixed(2));
+  const providerAmount = parseFloat((totalAmount - platformCommission).toFixed(2));
+
+  // 1️⃣ Update transaction details
   transaction.status = 'completed';
   transaction.stripeChargeId = paymentIntent.latest_charge;
   transaction.paidAt = new Date();
   transaction.completedAt = new Date();
+  transaction.amount = totalAmount;
+  transaction.platformCommission = platformCommission;
+  transaction.providerAmount = providerAmount;
   await transaction.save();
 
-  // Update job status
-  const Job = require('../models/Job');
-  await Job.findByIdAndUpdate(jobId, {
-    status: 'completed'
-  });
+  // 2️⃣ Update job status
+  await Job.findByIdAndUpdate(jobId, { status: 'completed', isPaid: true });
 
-  // Update provider stats
-  await User.findByIdAndUpdate(providerId, {
-    $inc: { totalCompletedJobs: 1 }
+// 3️⃣ Update provider wallet (add to pending balance)
+let providerWallet = await Wallet.findOne({ user: providerId });
+if (!providerWallet) {
+  providerWallet = await Wallet.create({
+    user: providerId,
+    pendingBalance: 0,
+    totalEarned: 0,
+    recentTransactions: [] // ✅ Make sure it's initialized
   });
+}
 
-  // Notify both parties
+// ✅ Ensure recentTransactions always exists as an array
+if (!Array.isArray(providerWallet.recentTransactions)) {
+  providerWallet.recentTransactions = [];
+}
+
+providerWallet.pendingBalance += providerAmount;
+providerWallet.totalEarned += providerAmount;
+
+providerWallet.recentTransactions.push({
+  transaction: transaction._id,
+  amount: providerAmount,
+  type: 'pending',
+  date: new Date(),
+});
+
+await providerWallet.save();
+
+  // 4️⃣ Update admin overview totals
+  // (Assuming your Overview collection has a single document that tracks totals)
+  let overview = await Overview.findOne();
+  if (!overview) {
+    overview = await Overview.create({
+      totalRevenue: 0,
+      totalCommission: 0,
+      completedTransactions: 0,
+    });
+  }
+
+  overview.totalRevenue += totalAmount;
+  overview.totalCommission += platformCommission;
+  overview.completedTransactions += 1;
+  await overview.save();
+
+  // 5️⃣ Send notifications (client + provider)
   if (global.io) {
-    const { sendNotificationToUser } = require('../socket/socketHandler');
-    
     sendNotificationToUser(global.io, clientId, {
       type: 'payment_successful',
       title: 'Payment Successful',
-      message: `Your payment for "${transaction.job.title}" has been processed successfully`,
-      jobId: jobId,
-      amount: transaction.amount
+      message: `You paid $${totalAmount} for job "${transaction.job?.title || ''}".`,
+      amount: totalAmount,
     });
 
     sendNotificationToUser(global.io, providerId, {
       type: 'payment_received',
       title: 'Payment Received',
-      message: `You have received payment for "${transaction.job.title}"`,
-      jobId: jobId,
-      amount: transaction.providerAmount
+      message: `You received $${providerAmount} for job "${transaction.job?.title || ''}". Pending for approval.`,
+      amount: providerAmount,
     });
   }
+
+  console.log(`🎉 Job payment processed → Total: $${totalAmount}, Commission: $${platformCommission}, Provider: $${providerAmount}`);
 };
 
-// Handle Stripe Connect account updates
+
+// Handle Stripe Connect account updates (account.updated Event)
 const handleAccountUpdated = async (account) => {
-  const Wallet = require('../models/Wallet');
-  const wallet = await Wallet.findOne({ stripeAccountId: account.id });
-  
-  if (wallet) {
-    wallet.stripeAccountStatus = account.charges_enabled ? 'verified' : 'pending';
+  try {
+    const wallet = await Wallet.findOne({ stripeAccountId: account.id });
+
+    if (!wallet) {
+      console.log(`⚠️ No wallet found for Stripe account: ${account.id}`);
+      return;
+    }
+
+    // Check verification status
+    const isVerified = 
+      account.charges_enabled === true && 
+      account.payouts_enabled === true && 
+      account.requirements?.disabled_reason === null;
+
+    // Update wallet status accordingly
+    wallet.stripeAccountStatus = isVerified ? 'verified' : 'pending';
     await wallet.save();
 
-    // Notify provider about account verification
-    if (global.io && account.charges_enabled) {
+    console.log(`✅ Stripe Connect account updated → ${account.id}, status = ${wallet.stripeAccountStatus}`);
+
+    // Notify provider when fully verified
+    if (isVerified && global.io) {
       const { sendNotificationToUser } = require('../socket/socketHandler');
       sendNotificationToUser(global.io, wallet.user, {
         type: 'stripe_account_verified',
-        title: 'Payment Account Verified',
-        message: 'Your Stripe account has been verified and you can now receive payments',
+        title: '✅ Stripe Account Verified',
+        message: 'Your payment account has been verified. You can now receive payouts successfully.',
         accountId: account.id
       });
     }
+
+  } catch (err) {
+    console.error('❌ Error handling account.updated:', err);
   }
 };
 
 // Handle payout completion
 const handlePayoutPaid = async (payout) => {
   console.log(`Payout ${payout.id} completed for amount: ${payout.amount / 100}`);
-  // Could update withdrawal status here if tracking individual payouts
 };
 
 // Handle transfer creation

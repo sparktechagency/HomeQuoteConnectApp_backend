@@ -278,7 +278,7 @@ socket.on("new-message", console.log);
 socket.on("new-notification", console.log);
 socket.on("user-status-changed", console.log);
 🧾 License
-This code is part of a private backend system for [Your App Name].
+This code is part of a private backend system .
 Unauthorized use or reproduction is prohibited.
 
 ✍️ Maintained by:

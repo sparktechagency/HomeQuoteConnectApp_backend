@@ -178,7 +178,7 @@ const releasePayment = async (req, res) => {
     const transaction = await Transaction.findOne({
       _id: id,
       status: 'completed'
-    }).populate('quote');
+    }).populate('quote job');
 
     if (!transaction) {
       return res.status(404).json({
@@ -188,13 +188,14 @@ const releasePayment = async (req, res) => {
     }
 
     // Check if payment already released
-    if (transaction.stripeTransferId) {
+    if (transaction.stripeTransferId || transaction.releasedAt) {
       return res.status(400).json({
         success: false,
         message: 'Payment has already been released to provider'
       });
     }
 
+    // Get provider and provider wallet
     const provider = await User.findById(transaction.quote.provider);
     const providerWallet = await Wallet.findOne({ user: provider._id });
 
@@ -205,65 +206,106 @@ const releasePayment = async (req, res) => {
       });
     }
 
-    // Release funds to provider
-    if (providerWallet.stripeAccountId) {
-      try {
-        // Transfer to provider's Stripe account
-        const transfer = await transferToProvider(
-          transaction.providerAmount,
-          providerWallet.stripeAccountId,
-          {
-            transactionId: transaction._id.toString(),
-            jobId: transaction.job._id.toString()
-          }
-        );
-
-        transaction.stripeTransferId = transfer.id;
-        
-        // Update provider's wallet
-        await providerWallet.addEarnings(transaction.providerAmount);
-
-      } catch (stripeError) {
-        console.error('Stripe transfer error:', stripeError);
-        
-        // If Stripe transfer fails, add to provider's pending balance
-        await providerWallet.addEarnings(transaction.providerAmount, true);
-        
-        return res.status(500).json({
-          success: false,
-          message: 'Stripe transfer failed. Funds added to provider\'s pending balance.'
-        });
-      }
-    } else {
-      // If no Stripe account, add to provider's pending balance
-      await providerWallet.addEarnings(transaction.providerAmount, true);
+    const amount = transaction.providerAmount;
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid transaction amount'
+      });
     }
 
+    // reload wallet fresh to avoid stale data
+    const pw = await Wallet.findOne({ user: transaction.quote.provider });
+
+    if (!pw) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provider wallet not found'
+      });
+    }
+
+    // Ensure there is enough pending balance to release
+    if (pw.pendingBalance < amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient pending balance to release'
+      });
+    }
+
+    // Move pending -> available (atomic-ish)
+    // Deduct pending, add available and keep totalEarned unchanged
+    pw.pendingBalance = parseFloat((pw.pendingBalance - amount).toFixed(2));
+    pw.availableBalance = parseFloat((pw.availableBalance + amount).toFixed(2));
+
+    // Add a recent transaction entry
+    pw.recentTransactions = pw.recentTransactions || [];
+    pw.recentTransactions.push({
+      transaction: transaction._id,
+      amount,
+      type: 'release',
+      notes: notes || 'released-by-admin',
+      date: new Date()
+    });
+
+    // Record metadata on transaction
     transaction.metadata = {
       ...transaction.metadata,
       releasedBy: req.user._id,
       releasedAt: new Date(),
-      releaseNotes: notes
+      releaseNotes: notes || 'released-by-admin'
     };
 
+    // Attempt to transfer to provider's Stripe account only if they have a verified account.
+    // NOTE: per your requested flow we still move pending -> available. The transfer is an optional immediate payout.
+    if (pw.stripeAccountId && pw.stripeAccountStatus === 'verified') {
+      try {
+        const transfer = await transferToProvider(
+          amount,
+          pw.stripeAccountId,
+          {
+            transactionId: transaction._id.toString(),
+            jobId: transaction.job ? transaction.job._id.toString() : undefined
+          }
+        );
+
+        transaction.stripeTransferId = transfer.id;
+        transaction.metadata.transferAttempt = {
+          id: transfer.id,
+          at: new Date()
+        };
+
+        // If you want to mark funds as already pulled out (withdrawn) you could:
+        // pw.availableBalance = parseFloat((pw.availableBalance - amount).toFixed(2));
+        // pw.withdrawnBalance = parseFloat((pw.withdrawnBalance + amount).toFixed(2));
+        // But per your requested requirement we leave the amount in availableBalance for provider to see/withdraw.
+      } catch (err) {
+        // If transfer fails, keep the move from pending->available (admin requested release succeeded)
+        // Record error details for later troubleshooting.
+        transaction.metadata.lastReleaseAttemptError = err.message || String(err);
+        console.error('Stripe transfer error during admin release:', err.message || err);
+      }
+    }
+
+    // Save both documents
+    await pw.save();
     await transaction.save();
 
-    // Notify provider
+    // Notify provider (socket)
     if (req.app.get('io')) {
       const { sendNotificationToUser } = require('../socket/socketHandler');
       sendNotificationToUser(req.app.get('io'), provider._id, {
         type: 'payment_released',
         title: 'Payment Released',
-        message: `Payment of $${transaction.providerAmount} for job "${transaction.job.title}" has been released to your wallet`,
+        message: `Payment of $${amount} for job "${transaction.job?.title || ''}" has been released to your available balance.`,
         transactionId: transaction._id,
-        amount: transaction.providerAmount
+        amount
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Payment released successfully',
-      data: { transaction }
+      message: 'Payment released successfully (pending -> available)',
+      data: { transaction, wallet: pw }
     });
 
   } catch (error) {
@@ -275,7 +317,6 @@ const releasePayment = async (req, res) => {
     });
   }
 };
-
 // @desc    Process refund
 // @route   PUT /api/admin/payments/transactions/:id/refund
 // @access  Private (Admin only)
@@ -663,11 +704,89 @@ const getGroupByExpression = (groupBy) => {
   }
 };
 
+// Exports will be defined after helper functions that follow (including processPendingReleases)
+
+// @desc    Process pending releases (automatic/manual)
+// @route   POST /api/admin/payments/release-pending
+// @access  Private (Admin only)
+const processPendingReleases = async (req, res) => {
+  try {
+    // Admin-only
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admins can process pending releases' });
+    }
+
+    const now = new Date();
+    const pendingTxs = await Transaction.find({
+      status: 'completed',
+      stripeTransferId: { $exists: false },
+      pendingReleaseAt: { $lte: now }
+    }).populate('quote job');
+
+    const results = [];
+
+    for (const tx of pendingTxs) {
+      try {
+        // Reuse release helper by calling releasePayment logic programmatically
+        // Create a temporary request user id for audit ('system' - use admin id if provided)
+        await (async () => {
+          // replicate doRelease logic inline to avoid circular ref
+          const pw = await Wallet.findOne({ user: tx.quote.provider });
+          if (!pw) throw new Error('Provider wallet not found');
+
+          if (pw.stripeAccountId && pw.stripeAccountStatus === 'verified') {
+            const transfer = await transferToProvider(
+              tx.providerAmount,
+              pw.stripeAccountId,
+              {
+                transactionId: tx._id.toString(),
+                jobId: tx.job._id.toString()
+              }
+            );
+
+            tx.stripeTransferId = transfer.id;
+            tx.metadata = {
+              ...tx.metadata,
+              releasedBy: req.user._id,
+              releasedAt: new Date(),
+              releaseNotes: 'auto-release'
+            };
+            await pw.addEarnings(tx.providerAmount);
+            await pw.save();
+            await tx.save();
+          } else {
+            // move pending -> available
+            await pw.releasePendingBalance(tx.providerAmount);
+            tx.metadata = {
+              ...tx.metadata,
+              releasedBy: req.user._id,
+              releasedAt: new Date(),
+              releaseNotes: 'auto-release'
+            };
+            await tx.save();
+          }
+        })();
+
+        results.push({ id: tx._id, status: 'released' });
+      } catch (err) {
+        console.error('Auto release failed for tx', tx._id, err.message);
+        results.push({ id: tx._id, status: 'failed', error: err.message });
+      }
+    }
+
+    res.status(200).json({ success: true, data: { processed: results.length, results } });
+  } catch (error) {
+    console.error('Process pending releases error:', error);
+    res.status(500).json({ success: false, message: 'Error processing pending releases', error: error.message });
+  }
+};
+
 module.exports = {
   getTransactions,
   getTransactionDetails,
   releasePayment,
   processRefund,
   getProviderWallets,
-  getPlatformEarnings
+  getPlatformEarnings,
+  processPendingReleases
 };

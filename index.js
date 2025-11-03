@@ -1,4 +1,3 @@
-// server.js - Final Version
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -7,59 +6,51 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const connectDB = require('./config/database');
 const { PORT, NODE_ENV } = require('./config/env');
-const { errorHandler, notFound, authLimiter, apiLimiter } = require('./middleware/errorHandler');
 
 // Initialize Express
 const app = express();
 const server = http.createServer(app);
 
-// Socket.IO configuration
+// ✅ Correct CORS DOMAIN
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+// ✅ Socket.IO CORS fixed
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "*",
+    origin: CLIENT_URL,
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
-// Connect to Database
+// DB Connect
 connectDB();
 
-// Security Middleware
+// ✅ Security setup
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-// app.use(cors({
-//   origin: process.env.CLIENT_URL || "*",
-//   credentials: true
-// }));
 
-app.use(cors());
+// ✅ Use ONLY one CORS config — not duplicated
+app.use(cors({
+  origin: CLIENT_URL,
+  credentials: true
+}));
 
-// Logging
-if (NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
-
-// Rate Limiting
-// app.use('/api/auth', authLimiter);
-// app.use('/api/', apiLimiter);
-
-// Body Parsing Middleware
+// ✅ Stripe webhook route must accept raw body – placed BEFORE express.json()
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
+// ✅ Normal JSON parser for all other routes
 app.use(express.json({ limit: '10mb' }));
-// app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Initialize Socket Handlers
-const initializeSocket = require('./socket/initializeSockets');
-initializeSocket(io);
+// ✅ Logging
+app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined'));
 
-// Make io accessible to routes
+// ✅ Attach socket globally
 app.set('io', io);
+require('./socket/initializeSockets')(io);
 
-// Routes
+// ✅ Routes
 app.use('/api/health', require('./routes/api/healthRoutes'));
 app.use('/api/auth', require('./routes/api/authRoutes'));
 app.use('/api/profile', require('./routes/api/profileRoutes'));
@@ -73,30 +64,20 @@ app.use('/api/support', require('./routes/api/supportRoutes'));
 app.use('/api/subscriptions', require('./routes/api/subscriptionRoutes'));
 app.use('/api/popular', require('./routes/api/popularRoutes'));
 app.use('/api/admin', require('./routes/api/adminRoutes'));
-app.use('/api/categories', require('./routes/api/categoryRoutes'));
-app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
+// Admin payment routes (separate file for payment management)
 app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
+app.use('/api/categories', require('./routes/api/categoryRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
 
-// 404 Handler
+// ✅ Error handlers
+const { errorHandler, notFound } = require('./middleware/errorHandler');
 app.use(notFound);
-
-// Error Handler
 app.use(errorHandler);
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
-
+// ✅ Set HOST properly for local + LAN support
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Start Server
-server.listen(PORT, '10.10.20.30', () => {
-  console.log(`🚀 Server running in ${NODE_ENV} mode at http://${HOST}:${PORT}`);
+// ✅ Start Server
+server.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running at http://${HOST}:${PORT}`);
 });
-
-module.exports = app;

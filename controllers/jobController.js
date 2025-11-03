@@ -407,6 +407,7 @@ const getMyJobs = async (req, res) => {
     if (status) filter.status = status;
 
     const jobs = await Job.find(filter)
+    .populate('client', 'fullName email phone profilePhoto')
       .populate('serviceCategory', 'title image')
       .populate('specializations', 'title category')
       .populate({

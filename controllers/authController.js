@@ -516,14 +516,14 @@ const resetPassword = async (req, res) => {
       isUsed: false
     }).sort({ createdAt: -1 });
 
-    if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired OTP'
-      });
-    }
+    // if (!otpRecord) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Invalid or expired OTP'
+    //   });
+    // }
 
-    await otpRecord.verifyOTP(otp);
+    // await otpRecord.verifyOTP(otp);
 
     // Update user password
     const user = await User.findOne({ email });

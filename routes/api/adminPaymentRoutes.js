@@ -4,6 +4,7 @@ const {
   getTransactions,
   getTransactionDetails,
   releasePayment,
+  processPendingReleases,
   processRefund,
   getProviderWallets,
   getPlatformEarnings
@@ -26,6 +27,7 @@ router.get('/payments/transactions', getTransactions);
 router.get('/payments/transactions/:id', getTransactionDetails);
 router.put('/payments/transactions/:id/release', releasePayment);
 router.put('/payments/transactions/:id/refund', processRefund);
+router.post('/payments/release-pending', processPendingReleases);
 
 // Wallet management
 router.get('/payments/wallets', getProviderWallets);

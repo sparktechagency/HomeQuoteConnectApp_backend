@@ -117,7 +117,7 @@ const getPopularProviders = async (options = {}) => {
 
   // Get all providers that match basic filters
   let providers = await User.find(filter)
-    .select('fullName profilePhoto businessName experienceLevel specializations serviceAreas averageRating totalReviews totalCompletedJobs verificationStatus location credits isOnline lastActive')
+    .select('fullName profilePhoto bio businessName businessName experienceLevel specializations serviceAreas averageRating totalReviews totalCompletedJobs verificationStatus location credits isOnline lastActive')
     .populate('specializations', 'title category')
     .lean();
 

@@ -229,6 +229,9 @@ const handleWebhook = async (req, res) => {
       case 'transfer.created':
         await handleTransferCreated(event.data.object);
         break;
+      case 'charge.succeeded':
+      console.log('💰 Charge succeeded:', event.data.object.id);
+      break;
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -244,72 +247,97 @@ const handleWebhook = async (req, res) => {
 const handlePaymentIntentSucceeded = async (paymentIntent) => {
   const { jobId, quoteId, clientId, providerId } = paymentIntent.metadata;
 
-  // Find and update transaction
+  console.log('💳 PaymentIntent succeeded:', paymentIntent.id);
+
+  // Find related transaction
   const transaction = await Transaction.findOne({
     stripePaymentIntentId: paymentIntent.id
   }).populate('job quote');
 
   if (!transaction) {
-    throw new Error(`Transaction not found for payment intent: ${paymentIntent.id}`);
+    console.error(`❌ Transaction not found for PaymentIntent ${paymentIntent.id}`);
+    return;
   }
 
-  // Update transaction status
+  // Mark transaction completed
   transaction.status = 'completed';
   transaction.stripeChargeId = paymentIntent.latest_charge;
   transaction.paidAt = new Date();
   transaction.completedAt = new Date();
   await transaction.save();
 
-  // Update job status
-  await Job.findByIdAndUpdate(jobId, {
-    status: 'completed'
-  });
+  // Mark job completed
+  const job = await Job.findByIdAndUpdate(
+    jobId,
+    { status: 'completed' },
+    { new: true }
+  );
 
-  // Get provider's wallet and Stripe account
-  const providerWallet = await Wallet.findOne({ user: providerId });
-  
-  if (providerWallet && providerWallet.stripeAccountId) {
-    // Transfer funds to provider's Stripe account
-    await transferToProvider(
-      transaction.providerAmount,
-      providerWallet.stripeAccountId,
-      {
-        transactionId: transaction._id.toString(),
-        jobId: jobId,
-        quoteId: quoteId
-      }
-    );
-
-    // Update provider's wallet
-    await providerWallet.addEarnings(transaction.providerAmount);
-  } else {
-    // If no Stripe account, add to pending balance
-    await providerWallet.addEarnings(transaction.providerAmount, true);
+  if (!job) {
+    console.error(`⚠️ Job not found for ID: ${jobId}`);
   }
 
-  // Update provider stats
+  // ✅ Ensure provider wallet exists
+  const providerWallet = await Wallet.getOrCreate(providerId);
+
+  // ✅ Decide where to add funds
+  if (providerWallet.stripeAccountId && providerWallet.stripeAccountStatus === 'verified') {
+    // Send payout directly to provider’s Stripe Connect account
+    try {
+      await transferToProvider(
+        transaction.providerAmount,
+        providerWallet.stripeAccountId,
+        {
+          transactionId: transaction._id.toString(),
+          jobId,
+          quoteId,
+        }
+      );
+
+      // Funds are transferred instantly
+      await providerWallet.addEarnings(transaction.providerAmount);
+      console.log(`✅ Funds transferred directly to provider ${providerId}`);
+    } catch (transferErr) {
+      console.error('⚠️ Transfer to provider failed:', transferErr.message);
+      // Add to pending balance if direct transfer fails
+      await providerWallet.addEarnings(transaction.providerAmount, true);
+    }
+  } else {
+    // Provider hasn’t verified Stripe account yet → keep in pending
+    await providerWallet.addEarnings(transaction.providerAmount, true);
+    // schedule for automatic release after 24 hours
+    transaction.pendingReleaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await transaction.save();
+    console.log(`💰 Added to pending balance for provider ${providerId}; scheduled release at ${transaction.pendingReleaseAt.toISOString()}`);
+  }
+
+  // ✅ Update provider performance stats
   await User.findByIdAndUpdate(providerId, {
     $inc: { totalCompletedJobs: 1 }
   });
 
-  // Notify both parties
+  // ✅ Send real-time notifications
   if (global.io) {
+    // Notify client
     sendNotificationToUser(global.io, clientId, {
       type: 'payment_successful',
       title: 'Payment Successful',
-      message: `Your payment for "${transaction.job.title}" has been processed successfully`,
-      jobId: jobId,
-      amount: transaction.amount
+      message: `Your payment for "${transaction.job?.title || 'the job'}" has been successfully processed.`,
+      jobId,
+      amount: transaction.amount,
     });
 
+    // Notify provider
     sendNotificationToUser(global.io, providerId, {
       type: 'payment_received',
       title: 'Payment Received',
-      message: `You have received payment for "${transaction.job.title}"`,
-      jobId: jobId,
-      amount: transaction.providerAmount
+      message: `You’ve received payment for "${transaction.job?.title || 'the job'}".`,
+      jobId,
+      amount: transaction.providerAmount,
     });
   }
+
+  console.log(`✅ Payment successfully recorded for provider ${providerId}`);
 };
 
 // Handle failed payment
@@ -340,53 +368,31 @@ const handlePaymentIntentFailed = async (paymentIntent) => {
 const setupStripeConnect = async (req, res) => {
   try {
     if (req.user.role !== 'provider') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only providers can setup Stripe Connect'
-      });
+      return res.status(403).json({ success: false, message: 'Only providers can setup Stripe Connect' });
     }
 
-    // Check if already has Stripe account
+    // Get or create wallet
     let wallet = await Wallet.findOne({ user: req.user._id });
-    
-    if (wallet && wallet.stripeAccountId) {
-      // Generate new account link for existing account
-      const accountLink = await createAccountLink(
-        wallet.stripeAccountId,
-        `${process.env.CLIENT_URL}/provider/payment-setup?refresh=true`,
-        `${process.env.CLIENT_URL}/provider/payment-setup?success=true`
-      );
+    if (!wallet) wallet = await Wallet.create({ user: req.user._id });
 
-      return res.status(200).json({
-        success: true,
-        message: 'Stripe account already exists',
-        data: { accountLink }
-      });
+    // Create Stripe account if not exists
+    if (!wallet.stripeAccountId) {
+      const account = await createConnectAccount(req.user);
+      wallet.stripeAccountId = account.id;
+      wallet.stripeAccountStatus = 'pending';
+      await wallet.save();
     }
 
-    // Create new Stripe Connect account
-    const account = await createConnectAccount(req.user);
-
-    // Create wallet if doesn't exist
-    if (!wallet) {
-      wallet = await Wallet.create({ user: req.user._id });
-    }
-
-    // Update wallet with Stripe account ID
-    wallet.stripeAccountId = account.id;
-    wallet.stripeAccountStatus = 'pending';
-    await wallet.save();
-
-    // Create account link for onboarding
+    // Create account onboarding link
     const accountLink = await createAccountLink(
-      account.id,
+      wallet.stripeAccountId,
       `${process.env.CLIENT_URL}/provider/payment-setup?refresh=true`,
       `${process.env.CLIENT_URL}/provider/payment-setup?success=true`
     );
 
     res.status(200).json({
       success: true,
-      message: 'Stripe Connect setup initiated',
+      message: 'Stripe onboarding link created successfully',
       data: { accountLink }
     });
 
@@ -397,6 +403,44 @@ const setupStripeConnect = async (req, res) => {
       message: 'Error setting up Stripe Connect',
       error: error.message
     });
+  }
+};
+
+const checkStripeAccountStatus = async (req, res) => {
+  try {
+    const wallet = await Wallet.findOne({ user: req.user._id });
+
+    if (!wallet || !wallet.stripeAccountId) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Stripe account found. Please start onboarding.'
+      });
+    }
+
+    const account = await stripe.accounts.retrieve(wallet.stripeAccountId);
+    const isVerified =
+      account.charges_enabled &&
+      account.payouts_enabled &&
+      !account.requirements?.disabled_reason;
+
+    // ✅ Update DB if changed
+    wallet.stripeAccountStatus = isVerified ? 'verified' : 'pending';
+    await wallet.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Stripe account status fetched successfully',
+      data: {
+        status: wallet.stripeAccountStatus,
+        detailsSubmitted: account.details_submitted,
+        payoutsEnabled: account.payouts_enabled,
+        chargesEnabled: account.charges_enabled
+      }
+    });
+
+  } catch (error) {
+    console.error('Stripe status check error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -440,6 +484,9 @@ const getWallet = async (req, res) => {
 // @desc    Request withdrawal
 // @route   POST /api/payments/withdraw
 // @access  Private (Provider only)
+// @desc    Request withdrawal (Provider)
+// @route   POST /api/payments/withdraw
+// @access  Private (Provider only)
 const requestWithdrawal = async (req, res) => {
   try {
     if (req.user.role !== 'provider') {
@@ -450,69 +497,109 @@ const requestWithdrawal = async (req, res) => {
     }
 
     const { amount } = req.body;
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid amount' });
+    }
 
     const wallet = await Wallet.findOne({ user: req.user._id });
-    
     if (!wallet) {
-      return res.status(404).json({
-        success: false,
-        message: 'Wallet not found'
-      });
+      return res.status(404).json({ success: false, message: 'Wallet not found' });
     }
 
     if (wallet.availableBalance < amount) {
+      return res.status(400).json({ success: false, message: 'Insufficient available balance' });
+    }
+
+    if (amount < 10) {
+      return res.status(400).json({ success: false, message: 'Minimum withdrawal amount is $10' });
+    }
+
+    // Ensure stripe account exists and is verified
+    if (!wallet.stripeAccountId || wallet.stripeAccountStatus !== 'verified') {
       return res.status(400).json({
         success: false,
-        message: 'Insufficient available balance'
+        message: 'Stripe account not connected or not verified. Complete onboarding to receive payouts.'
       });
     }
 
-    if (amount < 10) { // Minimum withdrawal amount
+    // Fetch connected account details to ensure external/bank account exists
+    let connectedAccount;
+    try {
+      connectedAccount = await stripe.accounts.retrieve(wallet.stripeAccountId);
+    } catch (err) {
+      console.error('Error retrieving connected account:', err);
+      return res.status(500).json({ success: false, message: 'Failed to verify Stripe account', error: err.message });
+    }
+
+    // Check for external/bank account on connected account (may vary by country/type)
+    const externalAccounts = (connectedAccount.external_accounts && connectedAccount.external_accounts.data) || [];
+    if (externalAccounts.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Minimum withdrawal amount is $10'
+        message: 'No payout destination (bank account) found on connected Stripe account. Please add bank details in Stripe onboarding.'
       });
     }
 
-    // Process withdrawal (in real implementation, this would create a withdrawal request)
-    await wallet.processWithdrawal(amount);
+    // Deduct from wallet first (atomically)
+    await wallet.processWithdrawal(amount); // this will throw if insufficient
 
-    // If Stripe account is verified, process payout immediately
-    if (wallet.stripeAccountId && wallet.stripeAccountStatus === 'verified') {
-      try {
-        await createPayout(amount, wallet.stripeAccountId);
-        
-        // Notify provider
-        if (req.app.get('io')) {
-          sendNotificationToUser(req.app.get('io'), req.user._id, {
-            type: 'withdrawal_processed',
-            title: 'Withdrawal Processed',
-            message: `Your withdrawal of $${amount} has been processed successfully`,
-            amount
-          });
-        }
-      } catch (payoutError) {
-        console.error('Stripe payout error:', payoutError);
-        // If Stripe payout fails, revert the withdrawal
-        await Wallet.findByIdAndUpdate(wallet._id, {
-          $inc: {
-            availableBalance: amount,
-            withdrawnBalance: -amount
-          }
+    // Try to transfer funds to connected account (platform -> connected)
+    // Using transferToProvider helper (which uses stripe.transfers.create)
+    try {
+      const transfer = await transferToProvider(amount, wallet.stripeAccountId, {
+        reason: 'withdrawal',
+        provider: wallet.user.toString()
+      });
+
+      // Optionally save transfer id somewhere — here we'll push into recentTransactions
+      wallet.recentTransactions = wallet.recentTransactions || [];
+      wallet.recentTransactions.push({
+        type: 'withdrawal',
+        amount,
+        date: new Date(),
+        stripeTransferId: transfer.id
+      });
+      await wallet.save();
+
+      // Notify provider through socket if available
+      if (req.app.get('io')) {
+        sendNotificationToUser(req.app.get('io'), req.user._id, {
+          type: 'withdrawal_processed',
+          title: 'Withdrawal Processed',
+          message: `Your withdrawal of $${amount} has been transferred to your Stripe account.`,
+          amount,
+          transferId: transfer.id
         });
-        
-        throw new Error('Withdrawal failed. Please try again later.');
       }
-    }
 
-    res.status(200).json({
-      success: true,
-      message: 'Withdrawal request submitted successfully',
-      data: { wallet }
-    });
+      return res.status(200).json({
+        success: true,
+        message: 'Withdrawal initiated successfully',
+        data: { wallet, transferId: transfer.id }
+      });
+
+    } catch (stripeErr) {
+      console.error('Stripe transfer/payout error:', stripeErr);
+
+      // Revert wallet changes when transfer failed
+      await Wallet.findByIdAndUpdate(wallet._id, {
+        $inc: {
+          availableBalance: amount,
+          withdrawnBalance: -amount
+        }
+      });
+
+      // Provide actionable error message for debugging
+      const stripeMessage = stripeErr && stripeErr.message ? stripeErr.message : 'Stripe error';
+      return res.status(500).json({
+        success: false,
+        message: 'Withdrawal failed. Please try again later.',
+        error: stripeMessage
+      });
+    }
 
   } catch (error) {
-    console.error('Withdrawal request error:', error);
+    console.error('Withdrawal request error (outer):', error);
     res.status(500).json({
       success: false,
       message: 'Error processing withdrawal',
@@ -521,7 +608,9 @@ const requestWithdrawal = async (req, res) => {
   }
 };
 
+
 module.exports = {
+  checkStripeAccountStatus,
   createPayment,
   confirmCashPayment,
   handleWebhook,

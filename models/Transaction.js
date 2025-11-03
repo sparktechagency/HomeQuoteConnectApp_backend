@@ -77,6 +77,8 @@ const transactionSchema = new mongoose.Schema({
   paidAt: Date,
   completedAt: Date,
   refundedAt: Date,
+  // Pending release timestamp (for platform-held funds)
+  pendingReleaseAt: Date,
   
   // Metadata
   metadata: mongoose.Schema.Types.Mixed
