@@ -83,8 +83,19 @@ const getProviderDetails = async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(10);
 
-    // Get portfolio/gallery images (to be implemented)
-    const portfolio = []; // This would come from a separate gallery model
+    // Get portfolio/gallery images from ProjectGallery model
+    const ProjectGallery = require('../models/ProjectGallery');
+    const portfolio = await ProjectGallery.find({
+      provider: provider._id,
+      isActive: true,
+      isPublic: true
+    })
+    .select('title description images featured projectDate createdAt location budget clientName clientRating')
+    .sort({ featured: -1, createdAt: -1 })
+    .lean();
+
+    // Optionally include gallery stats
+    const galleryStats = await ProjectGallery.getProviderStats(provider._id);
 
     // Get provider statistics
     const totalJobs = await Job.countDocuments({
@@ -100,7 +111,8 @@ const getProviderDetails = async (req, res) => {
         provider: {
           ...provider.toObject(),
           totalJobs,
-          responseRate
+          responseRate,
+          galleryStats
         },
         reviews,
         portfolio

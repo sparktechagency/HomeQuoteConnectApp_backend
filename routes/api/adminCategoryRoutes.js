@@ -16,29 +16,27 @@ const { uploadSingle, handleUploadErrors } = require('../../config/multer');
 const router = express.Router();
 
 // All routes are protected and admin only
-// router.use(protect);
-// router.use(authorize('admin'));
-// router.use(authorize('client'));
-// router.use(authorize('provider'));
+router.use(protect);
+router.use(authorize('admin'));
 
 // Category routes
-router.get('/categories', getCategories);
+router.get('/', getCategories);
 router.post(
-  '/categories',
+  '/',
   uploadSingle('image'),
   handleUploadErrors,
   createCategory
 );
 router.put(
-  '/categories/:id',
+  '/:id',
   uploadSingle('image'),
   handleUploadErrors,
   updateCategory
 );
-router.delete('/categories/:id', deleteCategory);
+router.delete('/:id', deleteCategory);
 
 // Specialization routes
-router.get('/categories/:id/specializations', getCategorySpecializations);
+router.get('/:id/specializations', getCategorySpecializations);
 router.post('/specializations', createSpecialization);
 router.put('/specializations/:id', updateSpecialization);
 router.delete('/specializations/:id', deleteSpecialization);

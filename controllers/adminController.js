@@ -83,7 +83,7 @@ const getDashboardStats = async (req, res) => {
 
     // Recent activities
     const recentUsers = await User.find()
-      .select('fullName email profilePhoto role createdAt')
+      .select('fullName email profilePhoto role isBlocked createdAt')
       .sort({ createdAt: -1 })
       .limit(5);
 

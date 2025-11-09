@@ -54,8 +54,25 @@ const createAccountLink = async (accountId, refreshUrl, returnUrl) => {
 // Create payment intent
 const createPaymentIntent = async (amount, currency = 'usd', metadata = {}) => {
   try {
+    // Accept amount in dollars (e.g. 9.99) or cents (integer).
+    // Convert to integer cents for Stripe if a non-integer is provided.
+    let amountInCents;
+    if (typeof amount === 'number' && Number.isInteger(amount)) {
+      // Could be dollars without cents (e.g., 10) or already cents (1000).
+      // Heuristic: if the integer is unreasonably large, assume it's already cents.
+      // If amount >= 1000 treat as cents, otherwise treat as dollars.
+      amountInCents = amount >= 1000 ? amount : Math.round(amount * 100);
+    } else {
+      // Non-integer (float or string) -> treat as dollars and convert
+      amountInCents = Math.round(Number(amount) * 100);
+    }
+
+    if (!Number.isFinite(amountInCents) || amountInCents <= 0) {
+      throw new Error(`Invalid amount for payment intent: ${amount}`);
+    }
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // Convert to cents
+      amount: amountInCents,
       currency,
       automatic_payment_methods: {
         enabled: true,

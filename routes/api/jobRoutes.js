@@ -9,7 +9,9 @@ const {
   getMyJobs,
   cancelJob,
   getPopularCategories,
-  getJobsByCategory
+  getJobsByCategory,
+  updateJob,
+  deleteJob
 } = require('../../controllers/jobController');
 const { protect } = require('../../middleware/auth');
 const { uploadMultiple, handleUploadErrors } = require('../../config/multer');
@@ -35,5 +37,15 @@ router.get('/popular-categories', getPopularCategories);
 router.get('/category/:categoryId', getJobsByCategory);
 router.get('/:id', getJob);
 router.put('/:id/cancel', cancelJob);
+// Update job (client only)
+router.put(
+  '/:id',
+  uploadMultiple('photos', 10),
+  handleUploadErrors,
+  updateJob
+);
+
+// Delete job
+router.delete('/:id', deleteJob);
 
 module.exports = router;

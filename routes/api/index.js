@@ -13,7 +13,9 @@ const subscriptions = require ('./subscriptionRoutes.js');
 const popular = require('./popularRoutes.js');
 const adminCategoryRoutes = require('./adminCategoryRoutes.js');
 const categories = require('./categoryRoutes.js');
-const adminPaymentRoutes= require('./adminPaymentRoutes.js');
+const adminPaymentRoutes = require('./adminPaymentRoutes.js');
+const adminSubscriptionRoutes = require('./adminSubscriptionRoutes.js');
+const adminCreditRoutes = require('./adminCreditRoutes.js');
 
 _.use("/auth", authRouter);
 _.use('/profile', profileRoutes);
@@ -24,12 +26,14 @@ _.use('/payments', payments);
 _.use('/payments/webhook', express.raw({type: 'application/json'}));
 _.use('/reviews', reviews);
 _.use('/support', support);
-_.use('/admin', admin);
 _.use('/subscriptions', subscriptions);
 _.use('/popular', popular);
 _.use('/categories', categories);
-_.use('/admin', adminCategoryRoutes);
-_.use('/admin', adminPaymentRoutes);
+_.use('/admin/categories', adminCategoryRoutes);
+_.use('/admin/payments', adminPaymentRoutes);
+_.use('/admin/subscriptions', adminSubscriptionRoutes);
+_.use('/admin/credits', adminCreditRoutes);
+_.use('/admin', admin);
 
 
 

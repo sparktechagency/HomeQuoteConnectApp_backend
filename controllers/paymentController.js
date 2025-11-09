@@ -387,7 +387,7 @@ const setupStripeConnect = async (req, res) => {
     const accountLink = await createAccountLink(
       wallet.stripeAccountId,
       `${process.env.CLIENT_URL}/provider/payment-setup?refresh=true`,
-      `${process.env.CLIENT_URL}/provider/payment-setup?success=true`
+      `${process.env.CLIENT_URL}/provider/success=true`
     );
 
     res.status(200).json({

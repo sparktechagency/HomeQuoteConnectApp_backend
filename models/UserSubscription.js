@@ -13,6 +13,10 @@ const userSubscriptionSchema = new mongoose.Schema({
     ref: 'Subscription',
     required: true
   },
+  email: {
+  type: String,
+  default: null
+},
   
   // Subscription Details
   startDate: {

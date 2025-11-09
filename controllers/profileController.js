@@ -39,6 +39,7 @@ const getMyProfile = async (req, res) => {
 // @access  Private
 const updateProfile = async (req, res) => {
   try {
+    // protect against missing body (some clients may omit Content-Type header)
     const {
       fullName,
       phoneNumber,
@@ -50,7 +51,7 @@ const updateProfile = async (req, res) => {
       specializations,
       serviceAreas,
       workingHours
-    } = req.body;
+    } = req.body || {};
 
     const updateData = {
       fullName,
@@ -83,6 +84,14 @@ const updateProfile = async (req, res) => {
         delete updateData[key];
       }
     });
+
+    // If nothing to update, return a helpful response
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No update fields provided'
+      });
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,

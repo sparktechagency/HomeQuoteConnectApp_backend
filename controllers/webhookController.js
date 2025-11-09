@@ -10,6 +10,45 @@ const { handleSubscriptionPayment } = require('./subscriptionController');
 const Job = require('../models/Job');  
 const { sendNotificationToUser } = require('../socket/socketHandler'); // ✅ Import notifications if used
 
+// Handle payment_intent.created
+const handlePaymentIntentCreated = async (paymentIntent) => {
+  try {
+    // Get metadata from the payment intent
+    const { subscriptionId, userId, type } = paymentIntent.metadata || {};
+
+    if (type !== 'subscription') {
+      console.log('Payment intent is not for subscription');
+      return;
+    }
+
+    // Log the payment intent creation
+    console.log(`Payment intent created for subscription: ${subscriptionId}, user: ${userId}`);
+    
+    const amount = paymentIntent.amount / 100; // Convert from cents to dollars
+    const platformCommission = 0; // No commission on subscriptions
+    const providerAmount = amount; // Full amount goes to platform
+
+    // Create pending transaction record
+    await Transaction.create({
+      user: userId,
+      amount,
+      currency: paymentIntent.currency,
+      platformCommission,
+      providerAmount,
+      paymentMethod: 'card',
+      status: 'pending',
+      type: 'subscription',
+      stripePaymentIntentId: paymentIntent.id,
+      metadata: {
+        subscriptionId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error handling payment_intent.created:', error);
+    // Don't throw here, just log the error
+  }
+};
 
 // @desc    Main webhook handler for Stripe events
 // @route   POST /api/webhooks/stripe
@@ -29,6 +68,10 @@ const handleStripeWebhook = async (req, res) => {
     console.log(`Processing Stripe webhook: ${event.type}`);
 
     switch (event.type) {
+      case 'payment_intent.created':
+        await handlePaymentIntentCreated(event.data.object);
+        break;
+
       case 'payment_intent.succeeded':
         await handlePaymentIntentSucceeded(event.data.object);
         break;

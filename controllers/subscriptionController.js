@@ -1,4 +1,5 @@
 // controllers/subscriptionController.js
+const mongoose = require('mongoose');   // ✅ Must Be Added
 const Subscription = require('../models/Subscription');
 const UserSubscription = require('../models/UserSubscription');
 const CreditPackage = require('../models/CreditPackage');
@@ -71,18 +72,24 @@ const purchaseSubscription = async (req, res) => {
 
     // For card payments, create Stripe payment intent
     if (paymentMethod === 'card') {
-      const paymentIntent = await createPaymentIntent(amount, 'usd', {
-        type: 'subscription',
-        subscriptionId: subscription._id.toString(),
-        userId: req.user._id.toString()
-      });
+      const paymentIntent = await createPaymentIntent(
+        amount,
+        'usd', 
+        {
+          type: 'subscription',
+          subscriptionId: subscription._id.toString(),
+          userId: req.user._id.toString(),
+          email: req.user.email
+        }
+      );
 
       // Create pending user subscription
       const userSubscription = await UserSubscription.create({
         user: req.user._id,
         subscription: subscriptionId,
+        email: req.user.email,
         startDate: new Date(),
-        endDate: calculateEndDate(subscription.type),
+        endDate: calculateEndDate(subscription.duration),
         status: 'pending',
         stripeSubscriptionId: paymentIntent.id
       });
@@ -95,6 +102,9 @@ const purchaseSubscription = async (req, res) => {
         providerAmount: amount,
         paymentMethod: 'card',
         stripePaymentIntentId: paymentIntent.id,
+  job: null,
+  quote: null,
+        type: 'subscription', // ✅ Add type to differentiate 
         status: 'pending',
         metadata: {
           type: 'subscription',

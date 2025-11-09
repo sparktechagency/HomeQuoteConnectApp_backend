@@ -11,13 +11,14 @@ const transactionSchema = new mongoose.Schema({
   job: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Job',
-    required: true
+  
   },
   quote: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Quote',
-    required: true
+ 
   },
+  
   
   // Payment Information
   amount: {

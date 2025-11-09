@@ -33,7 +33,15 @@ const notificationSchema = new mongoose.Schema({
       'subscription_activated',
       'credits_added',
       'payment_released',
-      'job_completed'
+      'job_completed',
+      'new_user_registered',        // New user joined
+      'profile_report_received',    // Profile report
+      'new_payment_request',        // Payment request
+      'new_report_submitted',       // General report
+      'user_verification_request',  // Provider verification
+      'withdrawal_request',         // Provider withdrawal
+      'support_ticket_assigned',    // Support ticket
+      'system_alert'                // System maintenance, etc.
     ]
   },
   title: {
@@ -74,6 +82,8 @@ const notificationSchema = new mongoose.Schema({
 // Indexes
 notificationSchema.index({ user: 1, createdAt: -1 });
 notificationSchema.index({ read: 1 });
+notificationSchema.index({ category: 1 });
+notificationSchema.index({ priority: -1 });
 notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Virtual for time ago
@@ -86,5 +96,4 @@ notificationSchema.virtual('timeAgo').get(function() {
   if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
   return `${Math.floor(diffInSeconds / 86400)}d ago`;
 });
-
 module.exports = mongoose.model('Notification', notificationSchema);

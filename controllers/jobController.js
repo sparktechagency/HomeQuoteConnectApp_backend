@@ -584,14 +584,182 @@ const getJobsByCategory = async (req, res) => {
   }
 };
 
-module.exports = {
-  createJob,
-  getJobs,
-  getTodayJobs,
-  getActiveJobs,
-  getJob,
-  getMyJobs,
-  cancelJob,
-  getPopularCategories,
-  getJobsByCategory
+// exports moved to bottom to include functions defined later
+
+// @desc    Update a job
+// @route   PUT /api/jobs/:id
+// @access  Private (Client only)
+const updateJob = async (req, res) => {
+  try {
+    if (req.user.role !== 'client') {
+      return res.status(403).json({ success: false, message: 'Only clients can update jobs' });
+    }
+
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    if (job.client.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this job' });
+    }
+
+    // Don't allow edits if a provider has been accepted
+    if (job.acceptedQuote) {
+      return res.status(400).json({ success: false, message: 'Cannot edit job after a provider has been accepted' });
+    }
+
+    // Also prevent edits if job is not pending
+    if (job.status && job.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Only pending jobs can be edited' });
+    }
+
+    // Safely read fields
+    const {
+      title,
+      description,
+      serviceCategory,
+      specializations,
+      location,
+      urgency,
+      preferredDate,
+      preferredTime,
+      priceRange,
+      specificInstructions
+    } = req.body || {};
+
+    if (title !== undefined) job.title = title;
+    if (description !== undefined || specificInstructions !== undefined) job.description = specificInstructions || description || job.description;
+    if (serviceCategory !== undefined) job.serviceCategory = serviceCategory;
+    if (specializations !== undefined) job.specializations = Array.isArray(specializations) ? specializations : JSON.parse(specializations || '[]');
+    if (urgency !== undefined) job.urgency = urgency;
+    if (preferredDate !== undefined) job.preferredDate = preferredDate ? new Date(preferredDate) : undefined;
+    if (preferredTime !== undefined) job.preferredTime = preferredTime;
+    if (priceRange !== undefined) job.priceRange = typeof priceRange === 'string' ? JSON.parse(priceRange) : priceRange;
+
+    // Parse and validate location if provided
+    if (location !== undefined) {
+      let locationData;
+      if (typeof location === 'string') {
+        try {
+          locationData = JSON.parse(location);
+        } catch (err) {
+          return res.status(400).json({ success: false, message: 'Invalid location format. Must be JSON object.' });
+        }
+      } else if (typeof location === 'object') {
+        locationData = location;
+      }
+
+      if (locationData) {
+        if (!locationData.coordinates || !Array.isArray(locationData.coordinates) || locationData.coordinates.length !== 2) {
+          return res.status(400).json({ success: false, message: 'Valid coordinates are required [longitude, latitude]' });
+        }
+        if (typeof locationData.address !== 'string') {
+          return res.status(400).json({ success: false, message: 'Location address must be a string' });
+        }
+        job.location = locationData;
+      }
+    }
+
+    // Handle photo uploads (append)
+    if (req.files && req.files.length > 0) {
+      const uploaded = await uploadMultipleImages(req.files);
+      job.photos = job.photos ? job.photos.concat(uploaded) : uploaded;
+    }
+
+    await job.save();
+
+    const populatedJob = await Job.findById(job._id)
+      .populate('client', 'fullName profilePhoto email phoneNumber')
+      .populate('serviceCategory', 'title image')
+      .populate('specializations', 'title category')
+      .populate('quotes')
+      .populate('acceptedQuote');
+
+    // Notify providers who quoted that job was updated
+    if (job.quotes && job.quotes.length > 0 && req.app.get('io')) {
+      const quotes = await Quote.find({ job: job._id }).populate('provider');
+      quotes.forEach(q => {
+        sendNotificationToUser(req.app.get('io'), q.provider._id, {
+          type: 'job_updated',
+          title: 'Job Updated',
+          message: `Job "${job.title}" has been updated by the client.`,
+          jobId: job._id
+        });
+      });
+    }
+
+    res.status(200).json({ success: true, message: 'Job updated successfully', data: { job: populatedJob } });
+
+  } catch (error) {
+    console.error('Update job error:', error);
+    res.status(500).json({ success: false, message: 'Error updating job', error: error.message });
+  }
 };
+
+// @desc    Delete a job
+// @route   DELETE /api/jobs/:id
+// @access  Private (Client only)
+const deleteJob = async (req, res) => {
+  try {
+    if (req.user.role !== 'client') {
+      return res.status(403).json({ success: false, message: 'Only clients can delete jobs' });
+    }
+
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    if (job.client.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this job' });
+    }
+
+    if (job.acceptedQuote) {
+      return res.status(400).json({ success: false, message: 'Cannot delete job after a provider has been accepted' });
+    }
+
+    if (job.status && job.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Only pending jobs can be deleted' });
+    }
+
+    // Delete photos from cloudinary if any
+    if (job.photos && job.photos.length > 0) {
+      const publicIds = job.photos.map(p => p.public_id).filter(Boolean);
+      const { deleteMultipleFiles } = require('../utils/fileUtils');
+      if (publicIds.length > 0) {
+        try {
+          await deleteMultipleFiles(publicIds);
+        } catch (err) {
+          console.error('Failed to delete job photos from Cloudinary:', err.message);
+        }
+      }
+    }
+
+  // Remove associated quotes
+  await Quote.deleteMany({ job: job._id });
+
+  // Delete the job document (use model method to avoid issues if job is a plain object)
+  await Job.findByIdAndDelete(job._id);
+
+    res.status(200).json({ success: true, message: 'Job deleted successfully' });
+
+  } catch (error) {
+    console.error('Delete job error:', error);
+    res.status(500).json({ success: false, message: 'Error deleting job', error: error.message });
+  }
+};
+
+  module.exports = {
+    createJob,
+    getJobs,
+    getTodayJobs,
+    getActiveJobs,
+    getJob,
+    getMyJobs,
+    cancelJob,
+    getPopularCategories,
+    getJobsByCategory,
+    updateJob,
+    deleteJob
+  };

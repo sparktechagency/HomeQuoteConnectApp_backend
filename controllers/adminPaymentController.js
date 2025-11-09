@@ -56,15 +56,24 @@ const getTransactions = async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const transactions = await Transaction.find(filter)
-      .populate('user', 'fullName email profilePhoto')
-      .populate('job', 'title')
-      .populate({
-        path: 'quote',
-        populate: {
-          path: 'provider',
-          select: 'fullName businessName email'
-        }
-      })
+  .populate('user', 'fullName email profilePhoto')
+  .populate({
+    path: 'job',
+    model: 'Job',
+    select: 'title description status location user provider client createdAt',
+    populate: [
+      { path: 'user', select: 'fullName email profilePhoto' },
+      { path: 'client', select: 'fullName email profilePhoto' },
+      { path: 'provider', select: 'fullName email profilePhoto businessName' }
+    ]
+  })
+  .populate({
+    path: 'quote',
+    populate: {
+      path: 'provider',
+      select: 'fullName businessName email profilePhoto'
+    }
+  })
       .sort(sortOptions)
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -181,73 +190,46 @@ const releasePayment = async (req, res) => {
     }).populate('quote job');
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found or not completed'
-      });
+      return res.status(404).json({ success: false, message: 'Transaction not found or not completed' });
     }
 
-    // Check if payment already released
-    if (transaction.stripeTransferId || transaction.releasedAt) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment has already been released to provider'
-      });
+    if (transaction.releasedAt) {
+      return res.status(400).json({ success: false, message: 'Payment has already been released' });
     }
 
-    // Get provider and provider wallet
     const provider = await User.findById(transaction.quote.provider);
-    const providerWallet = await Wallet.findOne({ user: provider._id });
-
-    if (!providerWallet) {
-      return res.status(400).json({
-        success: false,
-        message: 'Provider wallet not found'
-      });
-    }
+    const wallet = await Wallet.findOne({ user: provider._id });
+    if (!wallet) return res.status(404).json({ success: false, message: 'Provider wallet not found' });
 
     const amount = transaction.providerAmount;
     if (!amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid transaction amount'
-      });
+      return res.status(400).json({ success: false, message: 'Invalid provider amount' });
     }
 
-    // reload wallet fresh to avoid stale data
-    const pw = await Wallet.findOne({ user: transaction.quote.provider });
-
-    if (!pw) {
-      return res.status(400).json({
-        success: false,
-        message: 'Provider wallet not found'
-      });
+    if (wallet.pendingBalance < amount) {
+      return res.status(400).json({ success: false, message: 'Insufficient pending balance' });
     }
 
-    // Ensure there is enough pending balance to release
-    if (pw.pendingBalance < amount) {
-      return res.status(400).json({
-        success: false,
-        message: 'Insufficient pending balance to release'
-      });
+    // Initialize recentTransactions if undefined
+    if (!Array.isArray(wallet.recentTransactions)) {
+      wallet.recentTransactions = [];
     }
 
-    // Move pending -> available (atomic-ish)
-    // Deduct pending, add available and keep totalEarned unchanged
-    pw.pendingBalance = parseFloat((pw.pendingBalance - amount).toFixed(2));
-    pw.availableBalance = parseFloat((pw.availableBalance + amount).toFixed(2));
+    // Move pending -> available
+    wallet.pendingBalance = parseFloat((wallet.pendingBalance - amount).toFixed(2));
+    wallet.availableBalance = parseFloat((wallet.availableBalance + amount).toFixed(2));
 
-    // Add a recent transaction entry
-    pw.recentTransactions = pw.recentTransactions || [];
-    pw.recentTransactions.push({
+    // Record recent transaction
+    wallet.recentTransactions.push({
       transaction: transaction._id,
-      amount,
       type: 'release',
+      amount,
       notes: notes || 'released-by-admin',
       date: new Date()
     });
 
-    // Record metadata on transaction
+    // Update transaction metadata
+    transaction.releasedAt = new Date();
     transaction.metadata = {
       ...transaction.metadata,
       releasedBy: req.user._id,
@@ -255,42 +237,10 @@ const releasePayment = async (req, res) => {
       releaseNotes: notes || 'released-by-admin'
     };
 
-    // Attempt to transfer to provider's Stripe account only if they have a verified account.
-    // NOTE: per your requested flow we still move pending -> available. The transfer is an optional immediate payout.
-    if (pw.stripeAccountId && pw.stripeAccountStatus === 'verified') {
-      try {
-        const transfer = await transferToProvider(
-          amount,
-          pw.stripeAccountId,
-          {
-            transactionId: transaction._id.toString(),
-            jobId: transaction.job ? transaction.job._id.toString() : undefined
-          }
-        );
-
-        transaction.stripeTransferId = transfer.id;
-        transaction.metadata.transferAttempt = {
-          id: transfer.id,
-          at: new Date()
-        };
-
-        // If you want to mark funds as already pulled out (withdrawn) you could:
-        // pw.availableBalance = parseFloat((pw.availableBalance - amount).toFixed(2));
-        // pw.withdrawnBalance = parseFloat((pw.withdrawnBalance + amount).toFixed(2));
-        // But per your requested requirement we leave the amount in availableBalance for provider to see/withdraw.
-      } catch (err) {
-        // If transfer fails, keep the move from pending->available (admin requested release succeeded)
-        // Record error details for later troubleshooting.
-        transaction.metadata.lastReleaseAttemptError = err.message || String(err);
-        console.error('Stripe transfer error during admin release:', err.message || err);
-      }
-    }
-
-    // Save both documents
-    await pw.save();
+    await wallet.save();
     await transaction.save();
 
-    // Notify provider (socket)
+    // Notify provider via socket
     if (req.app.get('io')) {
       const { sendNotificationToUser } = require('../socket/socketHandler');
       sendNotificationToUser(req.app.get('io'), provider._id, {
@@ -302,21 +252,23 @@ const releasePayment = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'Payment released successfully (pending -> available)',
-      data: { transaction, wallet: pw }
+      message: 'Payment released successfully (pending → available)',
+      data: { transaction, wallet }
     });
 
   } catch (error) {
-    console.error('Release payment error:', error);
-    res.status(500).json({
+    console.error('Release payment failed:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Error releasing payment',
+      message: 'Error while releasing payment',
       error: error.message
     });
   }
 };
+
+
 // @desc    Process refund
 // @route   PUT /api/admin/payments/transactions/:id/refund
 // @access  Private (Admin only)

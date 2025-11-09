@@ -342,10 +342,74 @@ const checkProviderCanMessageClient = async (providerId, clientId, jobId) => {
   return !!acceptedQuote;
 };
 
+// Exports (placed after helper and direct message function)
+
+// @desc    Client -> Provider direct message (create chat if needed and send message)
+// @route   POST /api/chats/direct
+// @access  Private (Clients only)
+const sendDirectMessageToProvider = async (req, res) => {
+  try {
+    // Only clients may use this shortcut
+    if (req.user.role !== 'client') {
+      return res.status(403).json({ success: false, message: 'Only clients can send direct messages via this endpoint' });
+    }
+
+    // Guard against missing body
+    const { providerId, content, messageType = 'text', media, jobId, quoteId } = req.body || {};
+
+    // Validate request payload
+    if (!providerId) {
+      return res.status(400).json({ success: false, message: 'providerId is required' });
+    }
+    if (!content || (typeof content === 'object' && !content.text && !(content.media && content.media.length))) {
+      return res.status(400).json({ success: false, message: 'content is required' });
+    }
+
+    // Validate provider
+    const provider = await User.findById(providerId);
+    if (!provider || provider.role !== 'provider') {
+      return res.status(404).json({ success: false, message: 'Provider not found' });
+    }
+
+    // Create or find chat
+    const participant1 = { userId: req.user._id, role: req.user.role };
+    const participant2 = { userId: provider._id, role: provider.role };
+    const chat = await Chat.findOrCreate(participant1, participant2, jobId || null, quoteId || null);
+
+    // Create message
+    const message = await Message.create({
+      chat: chat._id,
+      sender: req.user._id,
+      receiver: provider._id,
+      content: { text: content, media: media || [] },
+      messageType
+    });
+
+    const populatedMessage = await Message.findById(message._id)
+      .populate('sender', 'fullName profilePhoto role')
+      .populate('receiver', 'fullName profilePhoto role');
+
+    // Emit socket events
+    if (req.app.get('io')) {
+      req.app.get('io').to(chat._id.toString()).emit('new-message', populatedMessage);
+      req.app.get('io').to(provider._id.toString()).emit('message-notification', {
+        message: populatedMessage,
+        chatId: chat._id
+      });
+    }
+
+    res.status(201).json({ success: true, message: 'Message sent', data: { message: populatedMessage, chat } });
+  } catch (error) {
+    console.error('Send direct message error:', error);
+    res.status(500).json({ success: false, message: 'Error sending direct message', error: error.message });
+  }
+};
+
 module.exports = {
   getChats,
   getOrCreateChat,
   getChatMessages,
   sendMessage,
-  getUnreadCount
+  getUnreadCount,
+  sendDirectMessageToProvider
 };

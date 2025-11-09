@@ -63,12 +63,20 @@ app.use('/api/reviews', require('./routes/api/reviewRoutes'));
 app.use('/api/support', require('./routes/api/supportRoutes'));
 app.use('/api/subscriptions', require('./routes/api/subscriptionRoutes'));
 app.use('/api/popular', require('./routes/api/popularRoutes'));
+app.use('/api/project-gallery', require('./routes/api/projectGalleryRoutes'));     
 app.use('/api/admin', require('./routes/api/adminRoutes'));
+app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
+app.use('/api/categories',  require('./routes/api/categoryRoutes'));
 // Admin payment routes (separate file for payment management)
 app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
-app.use('/api/categories', require('./routes/api/categoryRoutes'));
+app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
-
+app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
+app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
+app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
+app.use('/api/admin', require('./routes/api/adminReportRoutes'));
+app.use('/api', require('./routes/api/contentRoutes'));
+app.use('/api/reports', require('./routes/api/reportRoutes'));
 // ✅ Error handlers
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 app.use(notFound);
