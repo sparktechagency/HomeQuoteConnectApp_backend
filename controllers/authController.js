@@ -396,7 +396,7 @@ const login = async (req, res) => {
     await user.save();
 
     // Generate token with longer expiry if remember me is true
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
     // Prepare response data
     const userResponse = {

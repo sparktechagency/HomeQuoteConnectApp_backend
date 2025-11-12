@@ -1,17 +1,23 @@
-// utils/generateToken.js
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRE } = require('../config/env');
 
-const generateToken = (userId) => {
-  console.log('🔑 [generateToken] Using secret:', JWT_SECRET);
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: JWT_EXPIRE });
+// Generate token with both userId and role
+const generateToken = (user) => {
+  return jwt.sign(
+    { userId: user._id.toString(), role: user.role },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRE }
+  );
 };
 
+// Verify token safely and return decoded payload
 const verifyToken = (token) => {
-  return jwt.verify(token, JWT_SECRET);
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    console.error('❌ Token verification failed:', err.message);
+    return null;
+  }
 };
 
-module.exports = {
-  generateToken,
-  verifyToken
-};
+module.exports = { generateToken, verifyToken };

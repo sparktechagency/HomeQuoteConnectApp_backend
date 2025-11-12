@@ -135,31 +135,43 @@ const getUsers = async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'Only admins can access user list'
+        message: 'Only admins can access user list',
       });
     }
 
-    const { 
-      page = 1, 
-      limit = 10, 
-      role, 
-      search, 
+    const {
+      page = 1,
+      limit = 10,
+      role,
+      search,
       status,
       sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      isBlocked,
+      isActive,
     } = req.query;
 
     // Build filter
     const filter = {};
     if (role) filter.role = role;
+
+    // Support both "status" and direct query params
     if (status === 'active') filter.isActive = true;
     if (status === 'blocked') filter.isBlocked = true;
-    
+
+    if (typeof isBlocked !== 'undefined') {
+      filter.isBlocked = isBlocked === 'true';
+    }
+
+    if (typeof isActive !== 'undefined') {
+      filter.isActive = isActive === 'true';
+    }
+
     // Search filter
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
+        { email: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -168,9 +180,11 @@ const getUsers = async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const users = await User.find(filter)
-      .select('fullName email profilePhoto role isVerified isBlocked isOnline lastActive createdAt')
+      .select(
+        'fullName email profilePhoto role isVerified isBlocked isOnline lastActive createdAt'
+      )
       .sort(sortOptions)
-      .limit(limit * 1)
+      .limit(Number(limit))
       .skip((page - 1) * limit);
 
     const total = await User.countDocuments(filter);
@@ -180,22 +194,22 @@ const getUsers = async (req, res) => {
       data: {
         users,
         pagination: {
-          current: page,
+          current: Number(page),
           pages: Math.ceil(total / limit),
-          total
-        }
-      }
+          total,
+        },
+      },
     });
-
   } catch (error) {
     console.error('Get admin users error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching users',
-      error: error.message
+      error: error.message,
     });
   }
 };
+
 
 // @desc    Block/unblock user
 // @route   PUT /api/admin/users/:id/block
@@ -417,7 +431,7 @@ const getProviders = async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const providers = await User.find(filter)
-      .select('fullName phoneNumber email businessName verificationDocuments verificationStatus profilePhoto createdAt')
+      .select('fullName phoneNumber email businessName verificationDocuments businessLicense certificate verificationStatus profilePhoto createdAt')
       .sort(sortOptions)
       .limit(parseInt(limit, 10))
       .skip((parseInt(page, 10) - 1) * parseInt(limit, 10));

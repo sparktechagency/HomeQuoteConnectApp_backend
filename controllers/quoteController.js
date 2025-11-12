@@ -2,7 +2,7 @@
 const Quote = require('../models/Quote');
 const Job = require('../models/Job');
 const User = require('../models/User');
-const { sendNotificationToUser } = require('../socket/socketHandler');
+const { sendNotificationToUser, sendNotification } = require('../socket/notificationHandler');
 
 // @desc    Submit a quote for a job
 // @route   POST /api/quotes
@@ -99,16 +99,16 @@ const submitQuote = async (req, res) => {
       .populate('job', 'title client serviceCategory');
 
     // Notify client about new quote
-    if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), job.client, {
-        type: 'new_quote',
-        title: 'New Quote Received',
-        message: `You have received a new quote for "${job.title}"`,
-        jobId: job._id,
-        quoteId: quote._id,
-        providerName: req.user.fullName
-      });
-    }
+if (req.app.get('io')) {
+  await sendNotification(req.app.get('io'), job.client, {
+    type: 'new_quote',
+    title: 'New Quote Received',
+    message: `You have received a new quote for "${job.title}"`,
+    jobId: job._id,
+    quoteId: quote._id,
+    providerName: req.user.fullName
+  });
+}
 
     // Add credit usage to recent activity (we'll implement this later)
     await addCreditActivity(req.user._id, -1, `Quote submitted for job: ${job.title}`, job._id);
@@ -155,12 +155,12 @@ const updateQuote = async (req, res) => {
       });
     }
 
-    if (quote.status !== 'pending' && quote.status !== 'updated') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot update quote that has been accepted or declined'
-      });
-    }
+    // if (quote.status !== 'pending' && quote.status !== 'updated' ) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Cannot update quote that has been accepted or declined'
+    //   });
+    // }
 
     const updateData = {
       price: price !== undefined ? parseFloat(price) : quote.price,

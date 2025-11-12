@@ -8,11 +8,18 @@ const chatHandler = (io) => {
     console.log('User connected to chat:', socket.id);
 
     // Join chat room
-    socket.on('join-chat', async (chatId) => {
+    socket.on('join-chat', async (payload) => {
       try {
+        // Accept either a string chatId or an object { chatId }
+        const chatId = typeof payload === 'string' ? payload : (payload && payload.chatId);
+        if (!chatId) {
+          socket.emit('error', { message: 'join-chat requires chatId' });
+          return;
+        }
+
         socket.join(chatId);
         console.log(`User joined chat room: ${chatId}`);
-        
+
         // Mark messages as delivered
         await Message.updateMany(
           { 
@@ -31,15 +38,17 @@ const chatHandler = (io) => {
     });
 
     // Leave chat room
-    socket.on('leave-chat', (chatId) => {
+    socket.on('leave-chat', (payload) => {
+      const chatId = typeof payload === 'string' ? payload : (payload && payload.chatId);
+      if (!chatId) return;
       socket.leave(chatId);
       console.log(`User left chat room: ${chatId}`);
     });
-
     // Send message
     socket.on('send-message', async (data) => {
       try {
-        const { chatId, content, messageType = 'text', media } = data;
+        const { chatId, content, messageType = 'text' } = data;
+        console.log('send-message triggered with:', data);
         
         // Verify user is part of the chat
         const chat = await Chat.findById(chatId).populate('participants.user');
@@ -79,35 +88,56 @@ const chatHandler = (io) => {
           }
         }
 
-        // Create message
-        const message = await Message.create({
-          chat: chatId,
-          sender: socket.userId,
-          receiver: receiver.user._id,
-          content: {
-            text: content,
-            media: media || []
-          },
-          messageType
-        });
+        // Validate content structure expected by Message schema
+        // content should be an object: { text: string, media: Array }
+        if (!content || typeof content !== 'object') {
+          socket.emit('error', { message: "Invalid message payload: 'content' object is required." });
+          return;
+        }
 
-        // Populate message with sender info
-        const populatedMessage = await Message.findById(message._id)
-          .populate('sender', 'fullName profilePhoto role')
-          .populate('receiver', 'fullName profilePhoto role');
+        const text = typeof content.text === 'string' ? content.text : '';
+        const mediaArr = Array.isArray(content.media) ? content.media : [];
 
-        // Emit to chat room
-        io.to(chatId).emit('new-message', populatedMessage);
+        if (!text && mediaArr.length === 0) {
+          socket.emit('error', { message: "Message must contain 'content.text' string or non-empty 'content.media' array." });
+          return;
+        }
 
-        // Emit to receiver for notification
-        socket.to(receiver.user._id.toString()).emit('message-notification', {
-          message: populatedMessage,
-          chatId,
-          unreadCount: await getUnreadCount(receiver.user._id)
-        });
+     // Create message
+const message = await Message.create({
+  chat: chatId,
+  sender: socket.userId,
+  receiver: receiver.user._id,
+  content: {
+    text,
+    media: mediaArr
+  },
+  messageType
+});
 
-        // Update chat's last read for sender
-        await chat.updateLastRead(socket.userId);
+// FIXED: Add .exec()
+const populatedMessage = await Message.findById(message._id)
+  .populate('sender', 'fullName profilePhoto role')
+  .populate('receiver', 'fullName profilePhoto role')
+  .exec();
+
+// Emit to chat room
+io.to(chatId).emit('new-message', populatedMessage);
+console.log(`new-message emitted to room: ${chatId}`);
+console.log(`Active sockets in room: ${io.sockets.adapter.rooms.get(chatId)?.size || 0}`);
+socket.emit('new-message', populatedMessage); // Safe for Postman
+
+// Emit to receiver for notification
+socket.to(receiver.user._id.toString()).emit('message-notification', {
+  message: populatedMessage,
+  chatId,
+  unreadCount: await getUnreadCount(receiver.user._id)
+});
+
+
+
+// Update chat's last read for sender
+await chat.updateLastRead(socket.userId);
 
       } catch (error) {
         console.error('Send message error:', error);
@@ -117,7 +147,8 @@ const chatHandler = (io) => {
 
     // Typing indicators
     socket.on('typing-start', (data) => {
-      const { chatId } = data;
+      const chatId = typeof data === 'string' ? data : (data && (data.roomId || data.chatId));
+      if (!chatId) return;
       socket.to(chatId).emit('user-typing', {
         userId: socket.userId,
         isTyping: true
@@ -125,7 +156,8 @@ const chatHandler = (io) => {
     });
 
     socket.on('typing-stop', (data) => {
-      const { chatId } = data;
+      const chatId = typeof data === 'string' ? data : (data && (data.roomId || data.chatId));
+      if (!chatId) return;
       socket.to(chatId).emit('user-typing', {
         userId: socket.userId,
         isTyping: false
@@ -135,8 +167,9 @@ const chatHandler = (io) => {
     // Mark messages as read
     socket.on('mark-messages-read', async (data) => {
       try {
-        const { chatId } = data;
-        
+        const chatId = typeof data === 'string' ? data : (data && data.chatId);
+        if (!chatId) return;
+
         await Message.updateMany(
           {
             chat: chatId,
@@ -185,16 +218,45 @@ const chatHandler = (io) => {
 const checkProviderCanMessageClient = async (providerId, clientId, jobId) => {
   const Quote = require('../models/Quote');
   
-  if (!jobId) return false;
-  
+ if (!jobId) {
+    const existingChat = await Chat.findOne({
+      'participants.user': { $all: [providerId, clientId] }
+    });
+
+    if (!existingChat) return false;
+
+    const clientFirstMessage = await Message.findOne({
+      chat: existingChat._id,
+      sender: clientId
+    });
+
+    if (clientFirstMessage) return true;
+    return false;
+  }
+
   const acceptedQuote = await Quote.findOne({
     job: jobId,
     provider: providerId,
     client: clientId,
     status: 'accepted'
   });
-  
-  return !!acceptedQuote;
+
+  if (acceptedQuote) return true;
+
+  const chat = await Chat.findOne({
+    job: jobId,
+    'participants.user': { $all: [providerId, clientId] }
+  });
+
+  if (chat) {
+    const clientFirstMessage = await Message.findOne({
+      chat: chat._id,
+      sender: clientId
+    });
+    if (clientFirstMessage) return true;
+  }
+
+  return false;
 };
 
 // Helper function to get unread message count

@@ -53,6 +53,7 @@ const updateProfile = async (req, res) => {
       workingHours
     } = req.body || {};
 
+console.log(fullName)
     const updateData = {
       fullName,
       phoneNumber,

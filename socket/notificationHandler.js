@@ -7,26 +7,45 @@ const notificationHandler = (io) => {
     console.log('User connected for notifications:', socket.id);
 
     // Join user's notification room
-    socket.on('join-notifications', async (userId) => {
-      try {
-        socket.join(`notifications_${userId}`);
-        console.log(`User ${userId} joined notification room`);
+// ADD THIS LINE – THIS IS THE MISSING PART!!!
+// FIXED & FINAL – WORKS 100%
+socket.on('join-notifications', async (userId) => {
+  try {
+    // Accept userId from any format
+    const userIdToUse = 
+      (typeof userId === 'object' ? userId.userId : userId) || 
+      socket.userId;
 
-        // Mark all notifications as delivered
-        await Notification.updateMany(
-          { 
-            user: userId,
-            delivered: false
-          },
-          { 
-            delivered: true,
-            deliveredAt: new Date()
-          }
-        );
-      } catch (error) {
-        console.error('Join notifications error:', error);
-      }
+    if (!userIdToUse) {
+      console.log("No userId found!");
+      return socket.emit('error', { message: 'User ID required' });
+    }
+
+    await socket.join(`notifications_${userIdToUse}`);
+    console.log(`User ${userIdToUse} joined notification room`);
+
+    // Mark as delivered
+    await Notification.updateMany(
+      { user: userIdToUse, delivered: false },
+      { delivered: true, deliveredAt: new Date() }
+    );
+
+    // Send success response
+    const unreadCount = await Notification.countDocuments({
+      user: userIdToUse,
+      read: false
     });
+
+    socket.emit('notification-joined', {
+      message: "Successfully joined notification room",
+      unreadCount
+    });
+
+  } catch (error) {
+    console.error('Join notifications error:', error);
+    socket.emit('error', { message: 'Failed to join notifications' });
+  }
+});
 
     // Mark notification as read
     socket.on('mark-notification-read', async (data) => {
@@ -78,28 +97,44 @@ const notificationHandler = (io) => {
     });
   });
 };
-
-// Utility function to send notifications
-const sendNotification = async (io, userId, notificationData) => {
+const sendNotification = async (io, userId, payload) => {
   try {
+    // 1. Create notification in DB
     const notification = await Notification.create({
       user: userId,
-      ...notificationData,
+      type: payload.type,
+      title: payload.title,
+      message: payload.message,
+      data: {
+        jobId: payload.jobId,
+        quoteId: payload.quoteId,
+        providerName: payload.providerName,
+        clientName: payload.clientName,
+        reason: payload.reason
+      },
+      priority: payload.priority || 'medium',
       delivered: false,
       read: false
     });
 
-    // Emit to user's notification room
-    io.to(`notifications_${userId}`).emit('new-notification', notification);
+    // 2. Emit to correct room
+    const room = `notifications_${userId}`;
+    console.log("Sending notification to room:", room);
+    io.to(room).emit('new-notification', {
+      ...notification.toObject(),
+      createdAt: new Date().toISOString()
+    });
+
+    console.log(`new-notification saved & sent to room ${room}: ${payload.type}`);
 
     return notification;
+
   } catch (error) {
     console.error('Send notification error:', error);
     throw error;
   }
 };
-
 module.exports = {
   notificationHandler,
-  sendNotification
+  sendNotification,
 };

@@ -331,15 +331,47 @@ const getUnreadCount = async (req, res) => {
 
 // Helper function to check if provider can message client
 const checkProviderCanMessageClient = async (providerId, clientId, jobId) => {
-  if (!jobId) return false;
-  
+ if (!jobId) {
+    const existingChat = await Chat.findOne({
+      'participants.user': { $all: [providerId, clientId] }
+    });
+
+    if (!existingChat) return false;
+
+    const clientFirstMessage = await Message.findOne({
+      chat: existingChat._id,
+      sender: clientId
+    });
+
+    if (clientFirstMessage) return true; // ✅ Allow reply if client started the chat
+    return false;
+  }
+
+  // ✅ If job exists and has accepted quote → allow
   const acceptedQuote = await Quote.findOne({
     job: jobId,
     provider: providerId,
+    client: clientId,
     status: 'accepted'
   });
-  
-  return !!acceptedQuote;
+
+  if (acceptedQuote) return true;
+
+  // ✅ If client already messaged first on this job → allow
+  const chat = await Chat.findOne({
+    job: jobId,
+    'participants.user': { $all: [providerId, clientId] }
+  });
+
+  if (chat) {
+    const clientFirstMessage = await Message.findOne({
+      chat: chat._id,
+      sender: clientId
+    });
+    if (clientFirstMessage) return true;
+  }
+
+  return false;
 };
 
 // Exports (placed after helper and direct message function)
