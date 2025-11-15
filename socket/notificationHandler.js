@@ -48,39 +48,89 @@ socket.on('join-notifications', async (userId) => {
 });
 
     // Mark notification as read
-    socket.on('mark-notification-read', async (data) => {
-      try {
-        const { notificationId } = data;
-        await Notification.findByIdAndUpdate(notificationId, {
-          read: true,
-          readAt: new Date()
-        });
+socket.on('mark-notification-read', async (data) => {
+  try {
+    console.log('mark-notification-read received:', data);
 
-        socket.emit('notification-read', { notificationId });
-      } catch (error) {
-        console.error('Mark notification read error:', error);
-      }
+    const { notificationId } = data;
+    if (!notificationId) {
+      return socket.emit('error', { message: 'notificationId required' });
+    }
+
+    // SECURITY: Only allow user to mark THEIR OWN notifications
+    const notification = await Notification.findOneAndUpdate(
+      { 
+        _id: notificationId, 
+        user: socket.userId  // ← CRITICAL: Must belong to current user
+      },
+      { 
+        read: true, 
+        readAt: new Date() 
+      },
+      { new: true }
+    );
+
+    if (!notification) {
+      return socket.emit('error', { 
+        message: 'Notification not found or access denied' 
+      });
+    }
+
+    socket.emit('notification-read', { 
+      notificationId: notification._id 
     });
+
+    console.log(`Notification ${notificationId} marked as read by user ${socket.userId}`);
+
+  } catch (error) {
+    console.error('Mark notification read error:', error);
+    socket.emit('error', { message: 'Failed to mark notification as read' });
+  }
+});
 
     // Mark all notifications as read
-    socket.on('mark-all-notifications-read', async (userId) => {
-      try {
-        await Notification.updateMany(
-          { 
-            user: userId,
-            read: false
-          },
-          { 
-            read: true,
-            readAt: new Date()
-          }
-        );
+ socket.on('mark-notification-read', async (payload) => {
+  try {
+    console.log('mark-notification-read received:', payload);
 
-        socket.emit('all-notifications-read');
-      } catch (error) {
-        console.error('Mark all notifications read error:', error);
-      }
+    // FIX: Extract from nested `data`
+    const { notificationId } = payload.data || {};
+
+    console.log(notificationId)
+    if (!notificationId) {
+      return socket.emit('error', { message: 'notificationId required' });
+    }
+
+    // SECURITY: Only allow user to mark THEIR OWN notifications
+    const notification = await Notification.findOneAndUpdate(
+      { 
+        _id: notificationId, 
+        user: socket.userId  
+      },
+      { 
+        read: true, 
+        readAt: new Date() 
+      },
+      { new: true }
+    );
+
+    if (!notification) {
+      return socket.emit('error', { 
+        message: 'Notification not found or access denied' 
+      });
+    }
+
+    socket.emit('notification-read', { 
+      notificationId: notification._id 
     });
+
+    console.log(`Notification ${notificationId} marked as read by user ${socket.userId}`);
+
+  } catch (error) {
+    console.error('Mark notification read error:', error);
+    socket.emit('error', { message: 'Failed to mark notification as read' });
+  }
+});
 
     // Get unread notification count
     socket.on('get-unread-count', async (userId) => {
@@ -134,7 +184,57 @@ const sendNotification = async (io, userId, payload) => {
     throw error;
   }
 };
+const sendAdminNotification = async (io, payload) => {
+  try {
+    // 1. Find all admins
+    const admins = await User.find({ role: 'admin' }, '_id');
+
+    if (admins.length === 0) {
+      console.log('No admins found to notify');
+      return;
+    }
+
+    // 2. Create notification for EACH admin
+    const notifications = await Notification.insertMany(
+      admins.map(admin => ({
+        user: admin._id,
+        type: payload.type,
+        title: payload.title,
+        message: payload.message,
+        data: payload.data || {},
+        category: payload.category || 'system',
+        priority: payload.priority || 'medium',
+        delivered: false,
+        read: false
+      }))
+    );
+
+    // 3. Emit to each admin's room
+    notifications.forEach(notif => {
+      const room = `notifications_${notif.user}`;
+      io.to(room).emit('new-notification', {
+        ...notif.toObject(),
+        createdAt: new Date().toISOString()
+      });
+      console.log(`Admin notification → ${room}: ${payload.type}`);
+    });
+
+    return notifications;
+
+  } catch (error) {
+    console.error('sendAdminNotification error:', error);
+    throw error;
+  }
+};
+
+// Add this helper
+const emitRawEvent = (io, userId, event, data) => {
+  io.to(`notifications_${userId}`).emit(event, data);
+};
+
 module.exports = {
   notificationHandler,
   sendNotification,
+    emitRawEvent,
+  sendAdminNotification
 };

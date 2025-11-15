@@ -11,7 +11,7 @@ const {
   transferToProvider,
   stripe 
 } = require('../config/stripe');
-const { sendNotificationToUser } = require('../socket/socketHandler');
+const { sendNotification, sendAdminNotification } = require('../socket/notificationHandler');
 
 // Platform commission rate (10%)
 const PLATFORM_COMMISSION_RATE = 0.10;
@@ -179,7 +179,7 @@ const confirmCashPayment = async (req, res) => {
 
     // Notify client
     if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), transaction.user, {
+      sendNotification(req.app.get('io'), transaction.user, {
         type: 'payment_confirmed',
         title: 'Payment Confirmed',
         message: `Your cash payment for "${transaction.job.title}" has been confirmed by the provider`,
@@ -319,7 +319,7 @@ const handlePaymentIntentSucceeded = async (paymentIntent) => {
   // ✅ Send real-time notifications
   if (global.io) {
     // Notify client
-    sendNotificationToUser(global.io, clientId, {
+    sendNotification(global.io, clientId, {
       type: 'payment_successful',
       title: 'Payment Successful',
       message: `Your payment for "${transaction.job?.title || 'the job'}" has been successfully processed.`,
@@ -328,7 +328,7 @@ const handlePaymentIntentSucceeded = async (paymentIntent) => {
     });
 
     // Notify provider
-    sendNotificationToUser(global.io, providerId, {
+    sendNotification(global.io, providerId, {
       type: 'payment_received',
       title: 'Payment Received',
       message: `You’ve received payment for "${transaction.job?.title || 'the job'}".`,
@@ -352,7 +352,7 @@ const handlePaymentIntentFailed = async (paymentIntent) => {
 
     // Notify client about payment failure
     if (global.io && transaction.user) {
-      sendNotificationToUser(global.io, transaction.user, {
+      sendNotification(global.io, transaction.user, {
         type: 'payment_failed',
         title: 'Payment Failed',
         message: 'Your payment failed. Please try again.',
@@ -563,12 +563,30 @@ const requestWithdrawal = async (req, res) => {
 
       // Notify provider through socket if available
       if (req.app.get('io')) {
-        sendNotificationToUser(req.app.get('io'), req.user._id, {
+        sendNotification(req.app.get('io'), req.user._id, {
           type: 'withdrawal_processed',
           title: 'Withdrawal Processed',
           message: `Your withdrawal of $${amount} has been transferred to your Stripe account.`,
           amount,
           transferId: transfer.id
+        });
+      }
+
+      // === NOTIFY ALL ADMINS ===
+      if (req.app.get('io')) {
+        await sendAdminNotification(req.app.get('io'), {
+          type: 'withdrawal_requested',
+          title: 'Withdrawal Requested',
+          message: `${req.user.fullName} requested a withdrawal of $${amount}`,
+          data: {
+            providerId: req.user._id,
+            providerName: req.user.fullName,
+            amount,
+            transferId: transfer.id,
+            requestedAt: new Date()
+          },
+          category: 'withdrawal',
+          priority: 'high'
         });
       }
 

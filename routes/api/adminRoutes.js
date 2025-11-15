@@ -7,6 +7,7 @@ const {
   verifyProvider,
   getProviders
 } = require('../../controllers/adminController');
+const { adminGetUserChats } = require('../../controllers/chatController');
 const { protect, authorize } = require('../../middleware/auth');
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.use(authorize('admin'));
 // Admin routes
 router.get('/dashboard', getDashboardStats);
 router.get('/users', getUsers);
+router.get('/users/:id/chats', adminGetUserChats);
 router.get('/providers', getProviders);
 router.put('/users/:id/block', toggleUserBlock);
 router.put('/providers/:id/verify', verifyProvider);

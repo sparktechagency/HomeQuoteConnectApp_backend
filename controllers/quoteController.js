@@ -2,7 +2,7 @@
 const Quote = require('../models/Quote');
 const Job = require('../models/Job');
 const User = require('../models/User');
-const { sendNotificationToUser, sendNotification } = require('../socket/notificationHandler');
+const { sendNotification } = require('../socket/notificationHandler');
 
 // @desc    Submit a quote for a job
 // @route   POST /api/quotes
@@ -180,7 +180,7 @@ const updateQuote = async (req, res) => {
       .populate('job', 'title client serviceCategory');
 
     if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), quote.job.client, {
+      sendNotification(req.app.get('io'), quote.job.client, {
         type: 'quote_updated',
         title: 'Quote Updated',
         message: `Your quote for "${quote.job.title}" has been updated`,
@@ -274,7 +274,7 @@ const acceptQuote = async (req, res) => {
 
     // Notify provider about accepted quote
     if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), quote.provider._id, {
+      sendNotification(req.app.get('io'), quote.provider._id, {
         type: 'quote_accepted',
         title: 'Quote Accepted!',
         message: `Your quote for "${quote.job.title}" has been accepted`,
@@ -291,7 +291,7 @@ const acceptQuote = async (req, res) => {
       }).populate('provider');
 
       declinedQuotes.forEach(declinedQuote => {
-        sendNotificationToUser(req.app.get('io'), declinedQuote.provider._id, {
+        sendNotification(req.app.get('io'), declinedQuote.provider._id, {
           type: 'quote_declined',
           title: 'Quote Not Selected',
           message: `Your quote for "${quote.job.title}" was not selected`,
@@ -356,7 +356,7 @@ const declineQuote = async (req, res) => {
 
     // Notify provider about declined quote
     if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), quote.provider, {
+      sendNotification(req.app.get('io'), quote.provider, {
         type: 'quote_declined',
         title: 'Quote Declined',
         message: `Your quote for "${quote.job.title}" has been declined`,
@@ -417,7 +417,7 @@ const cancelQuote = async (req, res) => {
 
     // Notify client about cancelled quote
     if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), quote.job.client, {
+      sendNotification(req.app.get('io'), quote.job.client, {
         type: 'quote_cancelled',
         title: 'Quote Cancelled',
         message: `Quote for "${quote.job.title}" has been cancelled by the provider`,

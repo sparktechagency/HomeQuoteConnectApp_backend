@@ -437,11 +437,79 @@ const sendDirectMessageToProvider = async (req, res) => {
   }
 };
 
+// exports moved to bottom to include admin functions
+
+// @desc    Admin: Get all chats for a specific user
+// @route   GET /api/admin/users/:id/chats
+// @access  Private (Admin only)
+const adminGetUserChats = async (req, res) => {
+  try {
+    const { id: userId } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+
+    // Verify user exists
+    const user = await User.findById(userId).select('_id fullName role');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const chats = await Chat.find({
+      'participants.user': userId,
+      isActive: true
+    })
+      .populate('participants.user', 'fullName profilePhoto role isOnline lastActive')
+      .populate('job', 'title serviceCategory')
+      .populate('quote')
+      .sort({ updatedAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    // Attach unread counts (for that user) and lastMessage
+    const chatsWithMeta = await Promise.all(
+      chats.map(async (chat) => {
+        const unreadCount = await Message.countDocuments({
+          chat: chat._id,
+          receiver: userId,
+          isRead: false
+        });
+
+        const lastMessage = await Message.findOne({ chat: chat._id })
+          .sort({ createdAt: -1 })
+          .populate('sender', 'fullName profilePhoto');
+
+        return {
+          ...chat.toObject(),
+          unreadCount,
+          lastMessage
+        };
+      })
+    );
+
+    const total = await Chat.countDocuments({ 'participants.user': userId, isActive: true });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        chats: chatsWithMeta,
+        pagination: {
+          current: Number(page),
+          pages: Math.ceil(total / limit),
+          total
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin get user chats error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching user chats', error: error.message });
+  }
+};
+
 module.exports = {
   getChats,
   getOrCreateChat,
   getChatMessages,
   sendMessage,
   getUnreadCount,
-  sendDirectMessageToProvider
+  sendDirectMessageToProvider,
+  adminGetUserChats
 };

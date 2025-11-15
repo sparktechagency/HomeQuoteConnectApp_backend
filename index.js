@@ -74,7 +74,8 @@ app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
 app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
 app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
 app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
-app.use('/api/admin', require('./routes/api/adminReportRoutes'));
+app.use('/api/admin', require('./routes/api/adminReportRoutes')); 
+app.use('/api/admin', require('./routes/api/adminSupportRoutes.js')); 
 app.use('/api', require('./routes/api/contentRoutes'));
 app.use('/api/reports', require('./routes/api/reportRoutes'));
 // ✅ Error handlers

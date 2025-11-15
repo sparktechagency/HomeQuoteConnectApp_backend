@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const { generateToken } = require('../utils/generateToken');
 const { sendOTPEmail } = require('../utils/emailService');
 const { uploadToCloudinary } = require('../utils/cloudinary');
+const { sendAdminNotification } = require('../socket/notificationHandler');
 
 // @desc    Send OTP for registration
 // @route   POST /api/auth/send-otp
@@ -345,6 +346,21 @@ specializationsData = specializationsData.map(id => {
       userResponse.workingHours = user.workingHours;
       userResponse.credits = user.credits;
       userResponse.verificationStatus = user.verificationStatus;
+    }
+
+    if (req.app.get('io')) {
+      await sendAdminNotification(req.app.get('io'), {
+        type: 'new_user_registered',
+        title: 'New User Registered',
+        message: `New ${user.role} registered: ${user.fullName}`,
+        data: {
+          userId: user._id,
+          userRole: user.role,
+          registrationDate: user.createdAt
+        },
+        category: 'user',
+        priority: 'medium'
+      });
     }
 
     res.status(201).json({

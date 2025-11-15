@@ -242,13 +242,31 @@ const releasePayment = async (req, res) => {
 
     // Notify provider via socket
     if (req.app.get('io')) {
-      const { sendNotificationToUser } = require('../socket/socketHandler');
-      sendNotificationToUser(req.app.get('io'), provider._id, {
+      const { sendNotification } = require('../socket/notificationHandler');
+      sendNotification(req.app.get('io'), provider._id, {
         type: 'payment_released',
         title: 'Payment Released',
         message: `Payment of $${amount} for job "${transaction.job?.title || ''}" has been released to your available balance.`,
         transactionId: transaction._id,
         amount
+      });
+    }
+    // === NOTIFY ALL ADMINS ===
+    if (req.app.get('io')) {
+      await sendAdminNotification(req.app.get('io'), {
+        type: 'payment_released_by_admin',
+        title: 'Payment Released',
+        message: `${req.user.fullName} released $${amount} to ${provider.fullName}`,
+        data: {
+          transactionId: transaction._id,
+          providerId: provider._id,
+          providerName: provider.fullName,
+          amount,
+          jobTitle: transaction.job?.title,
+          releasedBy: req.user.fullName
+        },
+        category: 'payment',
+        priority: 'high'
       });
     }
 
