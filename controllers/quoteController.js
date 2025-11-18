@@ -132,6 +132,9 @@ if (req.app.get('io')) {
 // @desc    Update a quote
 // @route   PUT /api/quotes/:id
 // @access  Private (Provider only)
+// @desc    Update a quote
+// @route   PUT /api/quotes/:id
+// @access  Private (Provider only)
 const updateQuote = async (req, res) => {
   try {
     const { id } = req.params;
@@ -155,50 +158,78 @@ const updateQuote = async (req, res) => {
       });
     }
 
-    // if (quote.status !== 'pending' && quote.status !== 'updated' ) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: 'Cannot update quote that has been accepted or declined'
-    //   });
-    // }
+    // Save current status to restore later
+    const originalStatus = quote.status;
 
-    const updateData = {
-      price: price !== undefined ? parseFloat(price) : quote.price,
-      description: description || quote.description,
-      isAvailable: isAvailable !== undefined ? isAvailable : quote.isAvailable,
-      proposedDate: proposedDate ? new Date(proposedDate) : quote.proposedDate,
-      proposedTime: proposedTime || quote.proposedTime,
-      warranty: warranty ? (typeof warranty === 'string' ? JSON.parse(warranty) : warranty) : quote.warranty,
-      guarantee: guarantee ? (typeof guarantee === 'string' ? JSON.parse(guarantee) : guarantee) : quote.guarantee,
-      updateReason
-    };
+    // --- CASE 1: Update same quote (pending / updated) ---
+    if (quote.status === 'pending' || quote.status === 'updated') {
 
-    const updatedQuote = await quote.createUpdatedQuote(updateData);
+      quote.price = price !== undefined ? parseFloat(price) : quote.price;
+      quote.description = description || quote.description;
+      quote.isAvailable = isAvailable !== undefined ? isAvailable : quote.isAvailable;
+      quote.proposedDate = proposedDate ? new Date(proposedDate) : quote.proposedDate;
+      quote.proposedTime = proposedTime || quote.proposedTime;
+      quote.warranty = warranty ? (typeof warranty === 'string' ? JSON.parse(warranty) : warranty) : quote.warranty;
+      quote.guarantee = guarantee ? (typeof guarantee === 'string' ? JSON.parse(guarantee) : guarantee) : quote.guarantee;
+      quote.updateReason = updateReason;
+      quote.isUpdated = true;
 
-    const populatedQuote = await Quote.findById(updatedQuote._id)
-      .populate('provider', 'fullName profilePhoto businessName averageRating totalReviews experienceLevel')
-      .populate('job', 'title client serviceCategory');
+      // Force restore original status
+      quote.status = originalStatus;
 
-    if (req.app.get('io')) {
-      sendNotification(req.app.get('io'), quote.job.client, {
-        type: 'quote_updated',
-        title: 'Quote Updated',
-        message: `Your quote for "${quote.job.title}" has been updated`,
-        jobId: quote.job._id,
-        quoteId: updatedQuote._id,
-        providerName: req.user.fullName
+      const updatedQuote = await quote.save();
+
+      const populatedQuote = await Quote.findById(updatedQuote._id)
+        .populate('provider', 'fullName profilePhoto businessName averageRating totalReviews experienceLevel')
+        .populate('job', 'title client serviceCategory');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Quote updated successfully',
+        data: { quote: populatedQuote }
       });
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Quote updated successfully',
-      data: { quote: populatedQuote }
+    // --- CASE 2: Original quote was accepted — create a new updated quote ---
+    if (['accepted'].includes(quote.status)) {
+
+      const updateData = {
+        price: price !== undefined ? parseFloat(price) : quote.price,
+        description: description || quote.description,
+        isAvailable: isAvailable !== undefined ? isAvailable : quote.isAvailable,
+        proposedDate: proposedDate ? new Date(proposedDate) : quote.proposedDate,
+        proposedTime: proposedTime || quote.proposedTime,
+        warranty: warranty ? (typeof warranty === 'string' ? JSON.parse(warranty) : warranty) : quote.warranty,
+        guarantee: guarantee ? (typeof guarantee === 'string' ? JSON.parse(guarantee) : guarantee) : quote.guarantee,
+        updateReason,
+        status: "updated"  // new quote status
+      };
+
+      const newUpdatedQuote = await quote.createUpdatedQuote(updateData);
+
+      // 🔥 FIX: ensure old quote remains accepted
+      quote.status = originalStatus;
+      await quote.save();
+
+      const populatedQuote = await Quote.findById(newUpdatedQuote._id)
+        .populate('provider', 'fullName profilePhoto businessName averageRating totalReviews experienceLevel')
+        .populate('job', 'title client serviceCategory');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Quote updated successfully (new updated quote created)',
+        data: { quote: populatedQuote }
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: `Cannot update quote with status "${quote.status}"`
     });
 
   } catch (error) {
     console.error('Update quote error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Error updating quote',
       error: error.message
@@ -206,6 +237,12 @@ const updateQuote = async (req, res) => {
   }
 };
 
+
+
+
+// @desc    Accept a quote (Client only)
+// @route   PUT /api/quotes/:id/accept
+// @access  Private (Client only)
 // @desc    Accept a quote (Client only)
 // @route   PUT /api/quotes/:id/accept
 // @access  Private (Client only)
@@ -213,7 +250,7 @@ const acceptQuote = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find the quote and populate job details
+    // Find the quote and populate job & provider
     const quote = await Quote.findById(id)
       .populate('job')
       .populate('provider');
@@ -233,26 +270,25 @@ const acceptQuote = async (req, res) => {
       });
     }
 
-    if (quote.status !== 'pending' && quote.status !== 'updated') {
+    if (!['pending', 'updated'].includes(quote.status)) {
       return res.status(400).json({
         success: false,
         message: 'Quote cannot be accepted in its current status'
       });
     }
 
-    // Check if job already has an accepted quote
-    if (quote.job.acceptedQuote) {
-      return res.status(400).json({
-        success: false,
-        message: 'This job already has an accepted quote'
-      });
+
+
+    // If there is an already accepted quote, decline it automatically
+    if (quote.job.acceptedQuote && quote.job.acceptedQuote.toString() !== quote._id.toString()) {
+      await Quote.findByIdAndUpdate(quote.job.acceptedQuote, { status: 'declined' });
     }
 
-    // Update quote status
+    // Update the quote status to accepted
     quote.status = 'accepted';
     await quote.save();
 
-    // Update job status and set accepted quote
+    // Update job to set accepted quote and in-progress
     const job = await Job.findByIdAndUpdate(
       quote.job._id,
       {
@@ -262,7 +298,7 @@ const acceptQuote = async (req, res) => {
       { new: true }
     );
 
-    // Decline all other quotes for this job
+    // Decline all other quotes for this job except the accepted one
     await Quote.updateMany(
       {
         job: quote.job._id,
@@ -303,10 +339,7 @@ const acceptQuote = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Quote accepted successfully',
-      data: { 
-        quote,
-        job 
-      }
+      data: { quote, job }
     });
 
   } catch (error) {
