@@ -609,12 +609,11 @@ const updateJob = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cannot edit job after a provider has been accepted' });
     }
 
-    // Also prevent edits if job is not pending
     if (job.status && job.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Only pending jobs can be edited' });
     }
 
-    // Safely read fields
+    // Safely read fields from req.body
     const {
       title,
       description,
@@ -628,16 +627,27 @@ const updateJob = async (req, res) => {
       specificInstructions
     } = req.body || {};
 
+    // Update text fields
     if (title !== undefined) job.title = title;
-    if (description !== undefined || specificInstructions !== undefined) job.description = specificInstructions || description || job.description;
+    if (description !== undefined || specificInstructions !== undefined) {
+      job.description = specificInstructions || description || job.description;
+    }
     if (serviceCategory !== undefined) job.serviceCategory = serviceCategory;
-    if (specializations !== undefined) job.specializations = Array.isArray(specializations) ? specializations : JSON.parse(specializations || '[]');
+    if (specializations !== undefined) {
+      job.specializations = Array.isArray(specializations) 
+        ? specializations 
+        : JSON.parse(specializations || '[]');
+    }
     if (urgency !== undefined) job.urgency = urgency;
-    if (preferredDate !== undefined) job.preferredDate = preferredDate ? new Date(preferredDate) : undefined;
+    if (preferredDate !== undefined) {
+      job.preferredDate = preferredDate ? new Date(preferredDate) : undefined;
+    }
     if (preferredTime !== undefined) job.preferredTime = preferredTime;
-    if (priceRange !== undefined) job.priceRange = typeof priceRange === 'string' ? JSON.parse(priceRange) : priceRange;
+    if (priceRange !== undefined) {
+      job.priceRange = typeof priceRange === 'string' ? JSON.parse(priceRange) : priceRange;
+    }
 
-    // Parse and validate location if provided
+    // Handle location
     if (location !== undefined) {
       let locationData;
       if (typeof location === 'string') {
@@ -646,7 +656,7 @@ const updateJob = async (req, res) => {
         } catch (err) {
           return res.status(400).json({ success: false, message: 'Invalid location format. Must be JSON object.' });
         }
-      } else if (typeof location === 'object') {
+      } else if (typeof location === 'object' && location !== null) {
         locationData = location;
       }
 
@@ -661,11 +671,28 @@ const updateJob = async (req, res) => {
       }
     }
 
-    // Handle photo uploads (append)
+    // === KEY CHANGE: REPLACE photos instead of appending ===
     if (req.files && req.files.length > 0) {
+      // Upload new images
       const uploaded = await uploadMultipleImages(req.files);
-      job.photos = job.photos ? job.photos.concat(uploaded) : uploaded;
+
+      // Optional: Delete old images from cloud/storage (e.g., Cloudinary, AWS S3)
+      if (job.photos && job.photos.length > 0) {
+        for (const photoUrl of job.photos) {
+          try {
+            const publicId = extractPublicIdFromUrl(photoUrl); // You need to implement this based on your storage
+            await deleteImageFromCloud(publicId); // e.g., cloudinary.uploader.destroy(publicId)
+          } catch (err) {
+            console.warn('Failed to delete old image:', photoUrl, err);
+            // Don't fail the whole request if deletion fails
+          }
+        }
+      }
+
+      // Replace with new images only
+      job.photos = uploaded;
     }
+    // If no files uploaded → keep existing photos (or you can clear them if needed)
 
     await job.save();
 
@@ -676,7 +703,7 @@ const updateJob = async (req, res) => {
       .populate('quotes')
       .populate('acceptedQuote');
 
-    // Notify providers who quoted that job was updated
+    // Notify providers who quoted
     if (job.quotes && job.quotes.length > 0 && req.app.get('io')) {
       const quotes = await Quote.find({ job: job._id }).populate('provider');
       quotes.forEach(q => {
@@ -689,11 +716,19 @@ const updateJob = async (req, res) => {
       });
     }
 
-    res.status(200).json({ success: true, message: 'Job updated successfully', data: { job: populatedJob } });
+    return res.status(200).json({
+      success: true,
+      message: 'Job updated successfully',
+      data: { job: populatedJob }
+    });
 
   } catch (error) {
     console.error('Update job error:', error);
-    res.status(500).json({ success: false, message: 'Error updating job', error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating job',
+      error: error.message
+    });
   }
 };
 

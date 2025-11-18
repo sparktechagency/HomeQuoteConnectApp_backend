@@ -97,10 +97,11 @@ const updateSubscriptionPlans = async (req, res) => {
 
     const results = await Promise.all(
       plans.map(async (plan) => {
-        const { id, price, discount, isActive, isPopular } = plan;
+        const { id, price,credits, discount, isActive, isPopular } = plan;
         
         const updateData = {};
         if (price !== undefined) updateData.price = price;
+        if (credits !== undefined) updateData.credits = credits;
         if (discount !== undefined) updateData.discount = discount;
         if (isActive !== undefined) updateData.isActive = isActive;
         if (isPopular !== undefined) updateData.isPopular = isPopular;
@@ -138,10 +139,11 @@ const updateCreditPackages = async (req, res) => {
 
     const results = await Promise.all(
       packages.map(async (pkg) => {
-        const { id, price, discount, isActive, isPopular } = pkg;
+        const { id, price, credits, discount, isActive, isPopular } = pkg;
         
         const updateData = {};
         if (price !== undefined) updateData.price = price;
+        if (credits !== undefined) updateData.credits = credits;
         if (discount !== undefined) updateData.discount = discount;
         if (isActive !== undefined) updateData.isActive = isActive;
         if (isPopular !== undefined) updateData.isPopular = isPopular;

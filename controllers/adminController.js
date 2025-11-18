@@ -247,8 +247,8 @@ const toggleUserBlock = async (req, res) => {
 
     // Notify user if they're online
     if (req.app.get('io')) {
-      const { sendNotificationToUser } = require('../socket/socketHandler');
-      sendNotificationToUser(req.app.get('io'), user._id, {
+       const { sendNotification } = require('../socket/notificationHandler');
+      sendNotification(req.app.get('io'), user._id, {
         type: block ? 'account_blocked' : 'account_unblocked',
         title: block ? 'Account Blocked' : 'Account Unblocked',
         message: block ? 
@@ -335,8 +335,8 @@ const verifyProvider = async (req, res) => {
 
     // Notify provider
     if (req.app.get('io')) {
-      const { sendNotificationToUser } = require('../socket/socketHandler');
-      sendNotificationToUser(req.app.get('io'), provider._id, {
+   const { sendNotification } = require('../socket/notificationHandler');
+      sendNotification(req.app.get('io'), provider._id, {
         type: status === 'verified' ? 'verification_approved' : 'verification_rejected',
         title: status === 'verified' ? 'Verification Approved' : 'Verification Rejected',
         message: status === 'verified' ?

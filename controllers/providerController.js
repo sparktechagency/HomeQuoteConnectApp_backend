@@ -1,7 +1,10 @@
 // controllers/providerController.js
+const mongoose = require('mongoose');
 const Job = require('../models/Job');
 const Quote = require('../models/Quote');
 const User = require('../models/User');
+const Review = require('../models/Review');
+const Wallet = require('../models/Wallet');
 
 // @desc    Get nearby jobs for providers
 // @route   GET /api/provider/nearby-jobs
@@ -393,11 +396,114 @@ const getProviderDashboard = async (req, res) => {
     });
   }
 };
+// @desc    Get public provider details (profile, ratings, recent jobs, stats)
+// @route   GET /api/providers/:id
+// @access  Public (some fields are admin/owner-only)
+const getProviderDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid provider id' });
+    }
+
+    const provider = await User.findById(id)
+      .populate('specializations', 'title')
+      .lean();
+
+    if (!provider || provider.role !== 'provider') {
+      return res.status(404).json({ success: false, message: 'Provider not found' });
+    }
+
+    // Recent reviews (last 5)
+    const recentReviews = await Review.find({ reviewedUser: id, isActive: true, reviewType: 'client_to_provider' })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('reviewer', 'fullName profilePhoto')
+      .lean();
+
+    // Quotes and recent jobs (find jobs related to this provider via quotes)
+    const providerQuotes = await Quote.find({ provider: id }).select('job status price createdAt').lean();
+    const jobIds = Array.from(new Set(providerQuotes.map(q => q.job && q.job.toString()).filter(Boolean)));
+
+    const recentJobs = await Job.find({ _id: { $in: jobIds } })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('client', 'fullName profilePhoto')
+      .lean();
+
+    // Acceptance rate
+    const totalQuotes = await Quote.countDocuments({ provider: id });
+    const acceptedQuotes = await Quote.countDocuments({ provider: id, status: 'accepted' });
+    const acceptanceRate = totalQuotes > 0 ? Math.round((acceptedQuotes / totalQuotes) * 100) : 0;
+
+    // Wallet summary (safe getter)
+    let walletSummary = null;
+    try {
+      const wallet = await Wallet.getOrCreate(id);
+      walletSummary = {
+        availableBalance: wallet.availableBalance || 0,
+        pendingBalance: wallet.pendingBalance || 0,
+        totalEarned: wallet.totalEarned || 0,
+        stripeAccountStatus: wallet.stripeAccountStatus || 'pending'
+      };
+    } catch (e) {
+      // Non-fatal: wallet may not exist or fail; continue without it
+      walletSummary = null;
+    }
+
+    // Compose response
+    const result = {
+      profile: {
+        _id: provider._id,
+        fullName: provider.fullName,
+        businessName: provider.businessName,
+        bio: provider.bio,
+        profilePhoto: provider.profilePhoto,
+        experienceLevel: provider.experienceLevel,
+        specializations: provider.specializations || [],
+        serviceAreas: provider.serviceAreas || [],
+        workingHours: provider.workingHours || {},
+        isVerified: provider.isVerified,
+        verificationStatus: provider.verificationStatus,
+        averageRating: provider.averageRating || 0,
+        totalReviews: provider.totalReviews || 0,
+        totalCompletedJobs: provider.totalCompletedJobs || 0,
+        isOnline: provider.isOnline || false,
+        lastActive: provider.lastActive,
+        createdAt: provider.createdAt
+      },
+      recentReviews,
+      recentJobs,
+      acceptanceRate,
+      wallet: walletSummary
+    };
+
+    // Hide sensitive fields unless requester is admin or the owner
+    const isOwnerOrAdmin = req.user && (req.user.role === 'admin' || req.user._id.toString() === id.toString());
+
+    if (isOwnerOrAdmin) {
+      // attach contact & verification documents for owner/admin
+      result.profile.email = provider.email;
+      result.profile.phoneNumber = provider.phoneNumber;
+      result.profile.verificationDocuments = provider.verificationDocuments || {};
+      result.profile.subscription = provider.subscription || {};
+      result.profile.credits = provider.credits || 0;
+    }
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Get provider details error:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching provider details', error: error.message });
+  }
+};
 
 module.exports = {
   getNearbyJobs,
   getAcceptedJobs,
   getTodayJobs,
   markJobAsComplete,
-  getProviderDashboard
+  getProviderDashboard,
+  getProviderDetails
 };
+

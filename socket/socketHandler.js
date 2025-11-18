@@ -119,20 +119,9 @@ const socketHandler = (io) => {
   return io;
 };
 
-// Helper function to send notifications to specific users
-const sendNotificationToUser = (io, userId, notification) => {
-  io.to(userId).emit('new-notification', notification);
-};
-
-// Helper function to check if user is online
-const isUserOnline = (userId) => {
-  return connectedUsers.has(userId) && connectedUsers.get(userId).size > 0;
-};
 
 
 
 module.exports = {
   socketHandler,
-  sendNotificationToUser,
-  isUserOnline
 };

@@ -4,7 +4,8 @@ const authRouter = require("./authRoutes.js");
 const profileRoutes = require("./profileRoutes.js")
 const jobRoutes = require("./jobRoutes.js")
 const quoteRoutes = require("./quoteRoutes.js")
-const providerRoutes = require("./profileRoutes.js")
+const providerRoutes = require("./profileRoutes.js");
+const publicProviders = require('./publicProviderRoutes.js');
 const payments = require('./paymentRoutes.js');
 const reviews = require('./reviewRoutes.js');
 const support = require('./supportRoutes.js');
@@ -22,6 +23,8 @@ _.use('/profile', profileRoutes);
 _.use('/jobs', jobRoutes);
 _.use('/quotes', quoteRoutes);
 _.use('/provider', providerRoutes);
+// Public provider profiles (e.g. GET /api/providers/:id)
+_.use('/providers', publicProviders);
 _.use('/payments', payments);
 _.use('/payments/webhook', express.raw({type: 'application/json'}));
 _.use('/reviews', reviews);

@@ -57,6 +57,10 @@ app.use('/api/profile', require('./routes/api/profileRoutes'));
 app.use('/api/jobs', require('./routes/api/jobRoutes'));
 app.use('/api/quotes', require('./routes/api/quoteRoutes'));
 app.use('/api/provider', require('./routes/api/providerRoutes'));
+// Public provider profiles (singular `provider` router above is protected; expose public profiles
+// under the plural path so requests like GET /api/providers/:id do NOT pass through the
+// protected provider router middleware.
+app.use('/api/providers', require('./routes/api/publicProviderRoutes.js'));
 app.use('/api/chats', require('./routes/api/chatRoutes'));
 app.use('/api/payments', require('./routes/api/paymentRoutes'));
 app.use('/api/reviews', require('./routes/api/reviewRoutes'));
