@@ -295,100 +295,90 @@ const processRefund = async (req, res) => {
     const { id } = req.params;
     const { reason, amount, notes } = req.body;
 
-    const transaction = await Transaction.findOne({
-      _id: id,
-      status: 'completed'
-    }).populate('user job');
+    const transaction = await Transaction.findById(id).populate("user job");
 
     if (!transaction) {
       return res.status(404).json({
         success: false,
-        message: 'Transaction not found or not completed'
+        message: "Transaction not found"
       });
     }
 
-    const refundAmount = amount || transaction.amount;
-
-    if (refundAmount > transaction.amount) {
+    if (!["completed", "pending"].includes(transaction.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Refund amount cannot exceed transaction amount'
+        message: "Transaction is not refundable"
       });
     }
 
-    // Process Stripe refund for card payments
-    if (transaction.paymentMethod === 'card' && transaction.stripeChargeId) {
-      try {
-        const refund = await stripe.refunds.create({
-          charge: transaction.stripeChargeId,
-          amount: Math.round(refundAmount * 100), // Convert to cents
+    const refundAmount = Math.round((amount || transaction.amount) * 100);
+
+    if (refundAmount > transaction.amount * 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Refund amount cannot exceed original amount"
+      });
+    }
+
+    // ---------------------------
+    // REFUND IN STRIPE
+    // ---------------------------
+    if (transaction.paymentMethod === "card") {
+      let refund;
+
+      // 1️⃣ Prefer PaymentIntent
+      if (transaction.stripePaymentIntentId) {
+        refund = await stripe.refunds.create({
+          payment_intent: transaction.stripePaymentIntentId,
+          amount: refundAmount,
           metadata: {
             transactionId: transaction._id.toString(),
-            reason: reason,
-            adminNotes: notes,
-            processedBy: req.user._id.toString()
+            reason,
+            adminNotes: notes
           }
         });
-
-        transaction.stripeRefundId = refund.id;
-      } catch (stripeError) {
-        console.error('Stripe refund error:', stripeError);
-        return res.status(500).json({
+      }
+      // 2️⃣ Fallback to Charge ID
+      else if (transaction.stripeChargeId) {
+        refund = await stripe.refunds.create({
+          charge: transaction.stripeChargeId,
+          amount: refundAmount,
+          metadata: {
+            transactionId: transaction._id.toString(),
+            reason
+          }
+        });
+      } else {
+        return res.status(400).json({
           success: false,
-          message: 'Stripe refund failed: ' + stripeError.message
+          message: "No Stripe payment reference found (paymentIntent or chargeId missing)"
         });
       }
+
+      transaction.stripeRefundId = refund.id;
     }
 
-    // Update transaction status
-    transaction.status = 'refunded';
+    // Update transaction
+    transaction.status = "refunded";
     transaction.refundedAt = new Date();
-    transaction.metadata = {
-      ...transaction.metadata,
-      refund: {
-        reason,
-        amount: refundAmount,
-        notes,
-        processedBy: req.user._id,
-        processedAt: new Date()
-      }
-    };
-
     await transaction.save();
 
-    // Update job status if needed
-    await Job.findByIdAndUpdate(transaction.job._id, {
-      status: 'cancelled'
-    });
-
-    // Notify user
-    if (req.app.get('io')) {
-      const { sendNotificationToUser } = require('../socket/socketHandler');
-      sendNotificationToUser(req.app.get('io'), transaction.user._id, {
-        type: 'refund_processed',
-        title: 'Refund Processed',
-        message: `Your refund of $${refundAmount} for job "${transaction.job.title}" has been processed`,
-        transactionId: transaction._id,
-        amount: refundAmount,
-        reason: reason
-      });
-    }
-
-    res.status(200).json({
+    res.json({
       success: true,
-      message: 'Refund processed successfully',
-      data: { transaction }
+      message: "Refund processed",
+      transaction
     });
 
   } catch (error) {
-    console.error('Process refund error:', error);
+    console.error("Refund error:", error);
     res.status(500).json({
       success: false,
-      message: 'Error processing refund',
-      error: error.message
+      message: error.message
     });
   }
 };
+
+
 
 // @desc    Get provider wallets
 // @route   GET /api/admin/payments/wallets

@@ -465,12 +465,12 @@ const cancelJob = async (req, res) => {
       });
     }
 
-    if (job.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot cancel job that is already in progress or completed'
-      });
-    }
+   if (!['pending', 'in_progress'].includes(job.status)) {
+  return res.status(400).json({
+    success: false,
+    message: 'You can only cancel jobs that are pending or in progress'
+  });
+}
 
     job.status = 'cancelled';
     job.cancellationReason = cancellationReason;
