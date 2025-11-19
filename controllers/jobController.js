@@ -4,7 +4,7 @@ const Quote = require('../models/Quote');
 const Category = require('../models/Category');
 const User = require('../models/User');
 const { uploadMultipleImages } = require('../utils/fileUtils');
-const { sendNotificationToUser } = require('../socket/socketHandler');
+const { sendNotification } = require('../socket/notificationHandler');
 
 // @desc    Create a new job post
 // @route   POST /api/jobs
@@ -482,7 +482,7 @@ const cancelJob = async (req, res) => {
       
       quotes.forEach(quote => {
         if (req.app.get('io')) {
-          sendNotificationToUser(req.app.get('io'), quote.provider._id, {
+          sendNotification(req.app.get('io'), quote.provider._id, {
             type: 'job_cancelled',
             title: 'Job Cancelled',
             message: `Job "${job.title}" has been cancelled by the client`,
