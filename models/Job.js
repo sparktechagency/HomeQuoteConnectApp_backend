@@ -15,6 +15,11 @@ const jobSchema = new mongoose.Schema({
     maxlength: [2000, 'Description cannot be more than 2000 characters']
   },
   
+provider: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'User',
+  default: null
+},
   // Client Information
   client: {
     type: mongoose.Schema.Types.ObjectId,

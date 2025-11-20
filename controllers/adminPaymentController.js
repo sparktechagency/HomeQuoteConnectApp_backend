@@ -4,7 +4,7 @@ const Wallet = require('../models/Wallet');
 const User = require('../models/User');
 const Job = require('../models/Job');
 const { transferToProvider, stripe } = require('../config/stripe');
-
+const { sendNotification, sendAdminNotification } = require('../socket//notificationHandler');
 // @desc    Get all transactions with filtering
 // @route   GET /api/admin/payments/transactions
 // @access  Private (Admin only)
@@ -55,14 +55,13 @@ const getTransactions = async (req, res) => {
     const sortOptions = {};
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    const transactions = await Transaction.find(filter)
+const transactions = await Transaction.find(filter)
   .populate('user', 'fullName email profilePhoto')
   .populate({
     path: 'job',
     model: 'Job',
-    select: 'title description status location user provider client createdAt',
+    select: 'title description status location client provider createdAt',
     populate: [
-      { path: 'user', select: 'fullName email profilePhoto' },
       { path: 'client', select: 'fullName email profilePhoto' },
       { path: 'provider', select: 'fullName email profilePhoto businessName' }
     ]
@@ -74,9 +73,9 @@ const getTransactions = async (req, res) => {
       select: 'fullName businessName email profilePhoto'
     }
   })
-      .sort(sortOptions)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+  .sort(sortOptions)
+  .limit(limit * 1)
+  .skip((page - 1) * limit);
 
     const total = await Transaction.countDocuments(filter);
 
@@ -242,7 +241,7 @@ const releasePayment = async (req, res) => {
 
     // Notify provider via socket
     if (req.app.get('io')) {
-      const { sendNotification } = require('../socket/notificationHandler');
+
       sendNotification(req.app.get('io'), provider._id, {
         type: 'payment_released',
         title: 'Payment Released',
@@ -252,23 +251,23 @@ const releasePayment = async (req, res) => {
       });
     }
     // === NOTIFY ALL ADMINS ===
-    if (req.app.get('io')) {
-      await sendAdminNotification(req.app.get('io'), {
-        type: 'payment_released_by_admin',
-        title: 'Payment Released',
-        message: `${req.user.fullName} released $${amount} to ${provider.fullName}`,
-        data: {
-          transactionId: transaction._id,
-          providerId: provider._id,
-          providerName: provider.fullName,
-          amount,
-          jobTitle: transaction.job?.title,
-          releasedBy: req.user.fullName
-        },
-        category: 'payment',
-        priority: 'high'
-      });
-    }
+    // if (req.app.get('io')) {
+    //   await sendAdminNotification(req.app.get('io'), {
+    //     type: 'payment_released_by_admin',
+    //     title: 'Payment Released',
+    //     message: `${req.user.fullName} released $${amount} to ${provider.fullName}`,
+    //     data: {
+    //       transactionId: transaction._id,
+    //       providerId: provider._id,
+    //       providerName: provider.fullName,
+    //       amount,
+    //       jobTitle: transaction.job?.title,
+    //       releasedBy: req.user.fullName
+    //     },
+    //     category: 'payment',
+    //     priority: 'high'
+    //   });
+    // }
 
     return res.status(200).json({
       success: true,
