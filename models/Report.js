@@ -5,7 +5,7 @@ const reportSchema = new mongoose.Schema({
   // Report Information
   reportType: {
     type: String,
-    enum: ['user', 'job', 'review', 'message', 'payment', 'other'],
+    enum: ['user', 'job', 'review', 'message', 'payment', 'other',"crime"],
     required: true
   },
   reason: {

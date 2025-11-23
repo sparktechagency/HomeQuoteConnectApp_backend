@@ -5,6 +5,7 @@ const Quote = require('../models/Quote');
 const User = require('../models/User');
 const Review = require('../models/Review');
 const Wallet = require('../models/Wallet');
+const Portfolio = require('../models/ProjectGallery'); // Assuming you have a Portfolio model
 
 // @desc    Get nearby jobs for providers
 // @route   GET /api/provider/nearby-jobs
@@ -396,108 +397,102 @@ const getProviderDashboard = async (req, res) => {
     });
   }
 };
-// @desc    Get public provider details (profile, ratings, recent jobs, stats)
+// @desc    Get single provider details (same style as list endpoints)
 // @route   GET /api/providers/:id
-// @access  Public (some fields are admin/owner-only)
+// @access  Public
 const getProviderDetails = async (req, res) => {
   try {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid provider id' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid provider ID',
+      });
     }
 
-    const provider = await User.findById(id)
-      .populate('specializations', 'title')
+    const provider = await User.findOne({ _id: id, role: 'provider' })
+      .select(`
+        profilePhoto fullName businessName bio experienceLevel specializations
+        serviceAreas location isOnline verificationStatus credits totalCompletedJobs
+        averageRating totalReviews lastActive workingHours profileCompletion
+      `)
+      .populate('specializations', 'title category')
       .lean();
 
-    if (!provider || provider.role !== 'provider') {
-      return res.status(404).json({ success: false, message: 'Provider not found' });
+    if (!provider) {
+      return res.status(404).json({
+        success: false,
+        message: 'Provider not found',
+      });
     }
 
-    // Recent reviews (last 5)
-    const recentReviews = await Review.find({ reviewedUser: id, isActive: true, reviewType: 'client_to_provider' })
+    // Recent reviews
+    const reviews = await Review.find({
+      reviewedUser: id,
+      reviewType: 'client_to_provider',
+      isActive: true,
+    })
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate('reviewer', 'fullName profilePhoto')
+      .populate({
+        path: 'reviewer',
+        select: 'fullName profilePhoto profileCompletion',
+      })
       .lean();
 
-    // Quotes and recent jobs (find jobs related to this provider via quotes)
-    const providerQuotes = await Quote.find({ provider: id }).select('job status price createdAt').lean();
-    const jobIds = Array.from(new Set(providerQuotes.map(q => q.job && q.job.toString()).filter(Boolean)));
-
-    const recentJobs = await Job.find({ _id: { $in: jobIds } })
+    // Portfolio/projects
+    const portfolio = await Portfolio.find({ provider: id })
       .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('client', 'fullName profilePhoto')
       .lean();
 
-    // Acceptance rate
+    // Calculate response rate
     const totalQuotes = await Quote.countDocuments({ provider: id });
     const acceptedQuotes = await Quote.countDocuments({ provider: id, status: 'accepted' });
-    const acceptanceRate = totalQuotes > 0 ? Math.round((acceptedQuotes / totalQuotes) * 100) : 0;
+    const responseRate = totalQuotes > 0 ? (acceptedQuotes / totalQuotes) * 100 : 0;
 
-    // Wallet summary (safe getter)
-    let walletSummary = null;
-    try {
-      const wallet = await Wallet.getOrCreate(id);
-      walletSummary = {
-        availableBalance: wallet.availableBalance || 0,
-        pendingBalance: wallet.pendingBalance || 0,
-        totalEarned: wallet.totalEarned || 0,
-        stripeAccountStatus: wallet.stripeAccountStatus || 'pending'
-      };
-    } catch (e) {
-      // Non-fatal: wallet may not exist or fail; continue without it
-      walletSummary = null;
-    }
-
-    // Compose response
-    const result = {
-      profile: {
+    const providerData = {
+      ...provider,
+      id: provider._id,
+      totalJobs: totalQuotes,
+      responseRate: Math.round(responseRate),
+      galleryStats: {
         _id: provider._id,
-        fullName: provider.fullName,
-        businessName: provider.businessName,
-        bio: provider.bio,
-        profilePhoto: provider.profilePhoto,
-        experienceLevel: provider.experienceLevel,
-        specializations: provider.specializations || [],
-        serviceAreas: provider.serviceAreas || [],
-        workingHours: provider.workingHours || {},
-        isVerified: provider.isVerified,
-        verificationStatus: provider.verificationStatus,
-        averageRating: provider.averageRating || 0,
-        totalReviews: provider.totalReviews || 0,
-        totalCompletedJobs: provider.totalCompletedJobs || 0,
-        isOnline: provider.isOnline || false,
-        lastActive: provider.lastActive,
-        createdAt: provider.createdAt
+        totalProjects: portfolio.length,
+        totalViews: 0, // placeholder, you can calculate if stored
+        totalLikes: 0, // placeholder
+        featuredProjects: portfolio.filter(p => p.featured).length,
+        beforeAfterProjects: portfolio.reduce(
+          (acc, p) => acc + (p.images.some(img => img.imageType === 'before' || img.imageType === 'after') ? 1 : 0),
+          0
+        ),
       },
-      recentReviews,
-      recentJobs,
-      acceptanceRate,
-      wallet: walletSummary
     };
 
-    // Hide sensitive fields unless requester is admin or the owner
-    const isOwnerOrAdmin = req.user && (req.user.role === 'admin' || req.user._id.toString() === id.toString());
-
-    if (isOwnerOrAdmin) {
-      // attach contact & verification documents for owner/admin
-      result.profile.email = provider.email;
-      result.profile.phoneNumber = provider.phoneNumber;
-      result.profile.verificationDocuments = provider.verificationDocuments || {};
-      result.profile.subscription = provider.subscription || {};
-      result.profile.credits = provider.credits || 0;
-    }
-
-    return res.status(200).json({ success: true, data: result });
+    return res.status(200).json({
+      success: true,
+      data: {
+        provider: providerData,
+        reviews: reviews.map(r => ({
+          ...r,
+          job: r.job || null,
+          reviewer: {
+            ...r.reviewer,
+            id: r.reviewer._id,
+          },
+        })),
+        portfolio: portfolio,
+      },
+    });
   } catch (error) {
     console.error('Get provider details error:', error);
-    return res.status(500).json({ success: false, message: 'Error fetching provider details', error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    });
   }
 };
-
 module.exports = {
   getNearbyJobs,
   getAcceptedJobs,

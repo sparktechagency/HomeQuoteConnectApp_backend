@@ -210,8 +210,8 @@ const bookProviderDirectly = async (req, res) => {
 
     // Notify provider about direct booking
     if (req.app.get('io')) {
-      const { sendNotificationToUser } = require('../socket/socketHandler');
-      sendNotificationToUser(req.app.get('io'), provider._id, {
+      const { sendNotification } = require('../socket/notificationHandler');
+      sendNotification(req.app.get('io'), provider._id, {
         type: 'direct_booking',
         title: 'Direct Booking Request',
         message: `You have received a direct booking request for "${title}"`,
