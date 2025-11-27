@@ -78,7 +78,7 @@ const subscriptionSchema = new mongoose.Schema({
 });
 
 // Indexes
-subscriptionSchema.index({ type: 1 });
+// Note: { type: 1 } index is not needed as 'type' field with enum already creates an index
 subscriptionSchema.index({ isActive: 1 });
 subscriptionSchema.index({ price: 1 });
 

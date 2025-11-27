@@ -54,7 +54,7 @@ const creditActivitySchema = new mongoose.Schema({
 
 // Indexes
 creditActivitySchema.index({ user: 1, createdAt: -1 });
-creditActivitySchema.index({ type: 1 });
+// Note: { type: 1 } index is not needed as 'type' field with enum already creates an index
 creditActivitySchema.index({ referenceId: 1 });
 
 // Static method to log credit activity

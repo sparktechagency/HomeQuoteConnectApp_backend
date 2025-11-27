@@ -4,6 +4,7 @@ const {
   submitQuote,
   updateQuote,
   acceptQuote,
+  acceptQuoteAsProvider,
   declineQuote,
   cancelQuote,
   getMyQuotes,
@@ -22,6 +23,7 @@ router.get('/my-quotes', getMyQuotes);
 router.get('/job/:jobId', getQuotesByJob);
 router.put('/:id', updateQuote);
 router.put('/:id/accept', acceptQuote);
+router.put('/:id/accept-as-provider', acceptQuoteAsProvider);
 router.put('/:id/decline', declineQuote);
 router.put('/:id/cancel', cancelQuote);
 

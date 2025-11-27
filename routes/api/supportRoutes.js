@@ -9,6 +9,7 @@ const {
   getSupportStatistics
 } = require('../../controllers/supportController');
 const { protect, authorize } = require('../../middleware/auth');
+const { uploadMultiple } = require('../../config/multer');
 
 const router = express.Router();
 
@@ -19,7 +20,11 @@ router.use(protect);
 router.post('/tickets', createSupportTicket);
 router.get('/tickets', getUserTickets);
 router.get('/tickets/:id/messages', getTicketMessages);
-router.post('/tickets/:id/messages', sendSupportMessage);
+router.post(
+  "/tickets/:id/messages",
+  uploadMultiple("attachments", 10),  
+  sendSupportMessage
+);
 router.post('/tickets/:id/join-live', joinLiveChat);
 
 // Admin only routes

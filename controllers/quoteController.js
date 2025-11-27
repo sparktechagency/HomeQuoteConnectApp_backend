@@ -569,6 +569,118 @@ const getQuotesByJob = async (req, res) => {
   }
 };
 
+// @desc    Accept a quote (Provider accepts direct booking)
+// @route   PUT /api/quotes/:id/accept-as-provider
+// @access  Private (Provider only)
+const acceptQuoteAsProvider = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (req.user.role !== 'provider') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only providers can accept quotes'
+      });
+    }
+
+    // Find the quote and populate job & client
+    const quote = await Quote.findById(id)
+      .populate('job')
+      .populate({
+        path: 'job',
+        populate: { path: 'client', select: 'fullName profilePhoto email phoneNumber' }
+      });
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: 'Quote not found'
+      });
+    }
+
+    // Check if provider owns the quote
+    if (quote.provider.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to accept this quote'
+      });
+    }
+
+    if (!['pending', 'updated'].includes(quote.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Quote cannot be accepted in its current status'
+      });
+    }
+
+    // Update the quote status to accepted
+    quote.status = 'accepted';
+    await quote.save();
+
+    // Update job to set accepted quote and in-progress
+    const job = await Job.findByIdAndUpdate(
+      quote.job._id,
+      {
+        status: 'in_progress',
+        acceptedQuote: quote._id
+      },
+      { new: true }
+    ).populate('client');
+
+    // Decline all other quotes for this job except the accepted one
+    await Quote.updateMany(
+      {
+        job: quote.job._id,
+        _id: { $ne: quote._id },
+        status: { $in: ['pending', 'updated'] }
+      },
+      { status: 'declined' }
+    );
+
+    // Notify client about accepted quote
+    if (req.app.get('io')) {
+      sendNotification(req.app.get('io'), quote.job.client._id, {
+        type: 'quote_accepted',
+        title: 'Quote Accepted!',
+        message: `${req.user.fullName} has accepted the direct booking. Work will begin soon.`,
+        jobId: quote.job._id,
+        quoteId: quote._id,
+        providerName: req.user.fullName
+      });
+
+      // Notify other providers about declined quotes (if any)
+      const declinedQuotes = await Quote.find({
+        job: quote.job._id,
+        _id: { $ne: quote._id },
+        status: 'declined'
+      }).populate('provider');
+
+      declinedQuotes.forEach(declinedQuote => {
+        sendNotification(req.app.get('io'), declinedQuote.provider._id, {
+          type: 'quote_declined',
+          title: 'Quote Not Selected',
+          message: `Another provider's quote was selected for this job`,
+          jobId: quote.job._id
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Quote accepted successfully',
+      data: { quote, job }
+    });
+
+  } catch (error) {
+    console.error('Accept quote as provider error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error accepting quote',
+      error: error.message
+    });
+  }
+};
+
 // Helper function to add credit activity (to be implemented in User model)
 const addCreditActivity = async (userId, creditChange, description, jobId = null) => {
   // This will be implemented when we create the CreditActivity model
@@ -579,6 +691,7 @@ module.exports = {
   submitQuote,
   updateQuote,
   acceptQuote,
+  acceptQuoteAsProvider,
   declineQuote,
   cancelQuote,
   getMyQuotes,

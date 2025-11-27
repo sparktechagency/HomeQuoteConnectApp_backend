@@ -53,6 +53,9 @@ require('./socket/initializeSockets')(io);
 // ✅ Routes
 app.use('/api/health', require('./routes/api/healthRoutes'));
 app.use('/api/auth', require('./routes/api/authRoutes'));
+// Backwards-compatible alias: some clients call /auth/login (no /api prefix).
+// Mount auth routes also at '/auth' so both '/api/auth/...' and '/auth/...' work.
+app.use('/auth', require('./routes/api/authRoutes'));
 app.use('/api/profile', require('./routes/api/profileRoutes'));
 app.use('/api/jobs', require('./routes/api/jobRoutes'));
 app.use('/api/quotes', require('./routes/api/quoteRoutes'));

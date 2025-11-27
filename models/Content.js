@@ -55,7 +55,7 @@ const contentSchema = new mongoose.Schema({
 });
 
 // Indexes
-contentSchema.index({ type: 1 });
+// Note: { type: 1 } index is not needed as 'type' field with unique: true already creates an index
 contentSchema.index({ isActive: 1 });
 
 // Pre-save middleware to increment version

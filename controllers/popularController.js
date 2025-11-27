@@ -177,6 +177,8 @@ const bookProviderDirectly = async (req, res) => {
       description: specificInstructions || description,
       client: req.user._id,
       serviceCategory,
+        provider: id,   //  FIX ADDED HERE
+
       specializations: Array.isArray(specializations) ? specializations : JSON.parse(specializations || '[]'),
       location: typeof location === 'string' ? JSON.parse(location) : location,
       urgency,
@@ -201,6 +203,7 @@ const bookProviderDirectly = async (req, res) => {
       provider: id,
       price: priceRange && priceRange.isPersonalized ? 0 : (priceRange?.from || 0),
       description: 'Direct booking - quote to be provided',
+      // Description: 'Direct booking - quote to be provided',
       status: 'pending'
     });
 
@@ -223,6 +226,7 @@ const bookProviderDirectly = async (req, res) => {
     // Populate job for response
     const populatedJob = await Job.findById(job._id)
       .populate('client', 'fullName profilePhoto email phoneNumber')
+      .populate('provider', 'fullName email phoneNumber profilePhoto rating skills experience')
       .populate('serviceCategory', 'title image')
       .populate('specializations', 'title category')
       .populate('quotes');

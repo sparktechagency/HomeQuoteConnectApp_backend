@@ -2,7 +2,7 @@
 const SupportTicket = require('../models/SupportTicket');
 const SupportMessage = require('../models/SupportMessage');
 const User = require('../models/User');
-const { sendNotificationToUser } = require('../socket/socketHandler');
+const { sendNotification } = require('../socket/notificationHandler');
 
 // @desc    Create support ticket
 // @route   POST /api/support/tickets
@@ -37,7 +37,7 @@ const createSupportTicket = async (req, res) => {
     if (req.app.get('io')) {
       const admins = await User.find({ role: 'admin', isActive: true });
       admins.forEach(admin => {
-        sendNotificationToUser(req.app.get('io'), admin._id, {
+        sendNotification(req.app.get('io'), admin._id, {
           type: 'new_support_ticket',
           title: 'New Support Ticket',
           message: `New support ticket: ${title}`,
@@ -265,7 +265,7 @@ const sendSupportMessage = async (req, res) => {
       // Notify the other party
       if (req.user.role === 'admin') {
         // Notify user
-        sendNotificationToUser(req.app.get('io'), ticket.user, {
+        sendNotification(req.app.get('io'), ticket.user, {
           type: 'support_message',
           title: 'Support Response',
           message: `You have a new message in your support ticket: ${ticket.title}`,
@@ -274,7 +274,7 @@ const sendSupportMessage = async (req, res) => {
       } else {
         // Notify assigned admin or all admins
         if (ticket.assignedTo) {
-          sendNotificationToUser(req.app.get('io'), ticket.assignedTo, {
+          sendNotification(req.app.get('io'), ticket.assignedTo, {
             type: 'support_message',
             title: 'New Support Message',
             message: `New message in support ticket: ${ticket.title}`,
@@ -284,7 +284,7 @@ const sendSupportMessage = async (req, res) => {
           // Notify all admins
           const admins = await User.find({ role: 'admin', isActive: true });
           admins.forEach(admin => {
-            sendNotificationToUser(req.app.get('io'), admin._id, {
+            sendNotification(req.app.get('io'), admin._id, {
               type: 'support_message',
               title: 'New Support Message',
               message: `New message in unassigned ticket: ${ticket.title}`,
