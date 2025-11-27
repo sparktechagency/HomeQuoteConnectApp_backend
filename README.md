@@ -284,3 +284,216 @@ Unauthorized use or reproduction is prohibited.
 ✍️ Maintained by:
 Backend Developer: MD Mehedi hasan Akash
 Stack: Node.js, Express.js, MongoDB, Socket.IO
+
+
+
+
+
+=====================================================Support realtime===================================
+
+
+
+
+
+📝 Real-time Support Chat Socket.IO Documentation
+
+Server URL:
+
+ws://10.10.20.30:5000
+
+
+All communication is via Socket.IO events. All payloads are JSON objects.
+
+1️⃣ Connection
+Client / Admin Connection
+const socket = io("ws://10.10.20.30:5000", {
+  auth: { token: "YOUR_JWT_TOKEN" } // replace with JWT from login
+});
+
+
+auth.token: Required. JWT token from your backend.
+
+On connect, the server will verify the token and assign:
+
+socket.userId → the user ID
+
+socket.userRole → client / admin
+
+2️⃣ Join Support Ticket (Client / Admin)
+Event: join-support-ticket
+
+Join a specific support ticket room to receive messages.
+
+Payload:
+
+{
+  "ticketId": "507f1f77bcf86cd799439011"
+}
+
+
+Example:
+
+socket.emit("join-support-ticket", { ticketId: "507f1f77bcf86cd799439011" });
+
+
+Server Action:
+
+User joins the room: support_ticket_<ticketId>
+
+Can now receive messages for this ticket.
+
+3️⃣ Join Support Dashboard (Admin Only)
+Event: join-support-dashboard
+
+Payload: None
+
+Example:
+
+socket.emit("join-support-dashboard");
+
+
+Server Action:
+
+Admin joins support_dashboard room
+
+Can see messages from all tickets in real-time
+
+4️⃣ Send Support Message
+Event: support-message
+
+Payload (Object):
+
+{
+  "ticketId": "507f1f77bcf86cd799439011",
+  "content": "Hello, I need help with my payment issue",
+  "messageType": "text"
+}
+
+
+Fields:
+
+ticketId → Required. The support ticket ID.
+
+content → Required. Text content of the message.
+
+messageType → Optional. Default: "text". Other types: "image", "document", "file", "system".
+
+Example (Client):
+
+socket.emit("support-message", {
+  ticketId: "507f1f77bcf86cd799439011",
+  content: "Hello, I need help with my payment issue",
+  messageType: "text"
+});
+
+
+Server Action:
+
+Saves message in MongoDB (SupportMessage)
+
+Normalizes senderRole (client → user, admin → admin)
+
+Emits to ticket room: support_ticket_<ticketId>
+
+Event Received by Clients/Admins:
+
+socket.on("new-support-message", (msg) => {
+  console.log("New message:", msg.data);
+});
+
+
+Payload Example:
+
+{
+  "event": "new-support-message",
+  "data": {
+    "_id": "69284360e726325e9236cbec",
+    "ticket": "507f1f77bcf86cd799439011",
+    "sender": {
+      "_id": "6901e54215fc6770c2a8bccb",
+      "fullName": "John Doe",
+      "profilePhoto": { "url": "https://example.com/photo.jpg" },
+      "role": "client"
+    },
+    "senderRole": "user",
+    "content": { "text": "Hello, I need help with my payment issue", "attachments": [] },
+    "messageType": "text",
+    "isRead": false,
+    "readBy": [],
+    "createdAt": "2025-11-27T12:26:08.849Z"
+  }
+}
+
+5️⃣ Typing Indicators
+Start Typing
+
+Event: support-typing-start
+Payload:
+
+{
+  "ticketId": "507f1f77bcf86cd799439011"
+}
+
+
+Example:
+
+socket.emit("support-typing-start", { ticketId: "507f1f77bcf86cd799439011" });
+
+Stop Typing
+
+Event: support-typing-stop
+Payload:
+
+{
+  "ticketId": "507f1f77bcf86cd799439011"
+}
+
+
+Example:
+
+socket.emit("support-typing-stop", { ticketId: "507f1f77bcf86cd799439011" });
+
+
+Received Event (all others in ticket room):
+
+socket.on("support-user-typing", ({ userId, isTyping }) => {
+  console.log(`${userId} is typing: ${isTyping}`);
+});
+
+6️⃣ Mark Message as Read
+Event: mark-message-read
+
+Payload:
+
+{
+  "messageId": "69284360e726325e9236cbec"
+}
+
+
+Example:
+
+socket.emit("mark-message-read", { messageId: "69284360e726325e9236cbec" });
+
+
+Server Action:
+
+Adds user to readBy array in DB
+
+Optional broadcast:
+
+{
+  "messageId": "69284360e726325e9236cbec",
+  "userId": "6901e54215fc6770c2a8bccb"
+}
+
+7️⃣ Summary of Events
+Event	Direction	Payload	Notes
+join-support-ticket	Client/Admin → Server	{ ticketId }	Join ticket room
+join-support-dashboard	Admin → Server	None	Join dashboard
+support-message	Client/Admin → Server	{ ticketId, content, messageType? }	Send message
+new-support-message	Server → Room	{ data: messageObj }	Broadcast message
+support-typing-start	Client/Admin → Server	{ ticketId }	Start typing indicator
+support-typing-stop	Client/Admin → Server	{ ticketId }	Stop typing indicator
+support-user-typing	Server → Room	{ userId, isTyping }	Show typing
+mark-message-read	Client/Admin → Server	{ messageId }	Mark message as read
+message-read-update	Server → Room	{ messageId, userId }	Update read status

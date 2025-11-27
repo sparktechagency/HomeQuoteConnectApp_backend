@@ -3,6 +3,7 @@ const { socketHandler } = require('./socketHandler');
 const chatHandler = require('./chatHandler');
 const { verifyToken } = require('../utils/generateToken');
 const { notificationHandler } = require('./notificationHandler');
+const supportHandler = require('./supportHandler');
 
 const initializeSocket = (io) => {
   // === AUTHENTICATION MIDDLEWARE (PERFECT FOR POSTMAN) ===
@@ -46,6 +47,7 @@ const initializeSocket = (io) => {
   socketHandler(io);
   chatHandler(io);
   notificationHandler(io);  // ← SEMICOLON ADDED!
+  supportHandler(io);   // <-- ADD THIS!
 
   return io;
 };

@@ -1,7 +1,7 @@
 // controllers/adminSupportController.js
 const SupportTicket = require('../models/SupportTicket');
 const SupportMessage = require('../models/SupportMessage');
-const { sendNotificationToUser } = require('../socket/socketHandler');
+const { sendNotification } = require('../socket/notificationHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
 // Helper to process uploaded attachments (Multer files)
@@ -211,7 +211,7 @@ const assignTicketToAdmin = async (req, res) => {
 
     // Notify user about assignment
     if (req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), ticket.user, {
+      sendNotification(req.app.get('io'), ticket.user, {
         type: 'support_assigned',
         title: 'Support Agent Assigned',
         message: `A support agent has been assigned to your ticket: ${ticket.title}`,
@@ -282,7 +282,7 @@ const adminSendMessage = async (req, res) => {
       req.app.get('io').to(roomId).emit('new_support_message', populatedMessage);
 
       // Notify user
-      sendNotificationToUser(req.app.get('io'), ticket.user, {
+      sendNotification(req.app.get('io'), ticket.user, {
         type: 'support_message',
         title: 'Support Response',
         message: `You have a new message in your support ticket: ${ticket.title}`,
@@ -349,7 +349,7 @@ const resolveSupportTicket = async (req, res) => {
 
     // Notify user about resolution
     if (sendNotification && req.app.get('io')) {
-      sendNotificationToUser(req.app.get('io'), ticket.user, {
+      sendNotification(req.app.get('io'), ticket.user, {
         type: 'ticket_resolved',
         title: 'Ticket Resolved',
         message: `Your support ticket "${ticket.title}" has been resolved`,
