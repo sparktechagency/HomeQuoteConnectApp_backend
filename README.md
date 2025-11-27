@@ -497,3 +497,88 @@ support-typing-stop	Client/Admin → Server	{ ticketId }	Stop typing indicator
 support-user-typing	Server → Room	{ userId, isTyping }	Show typing
 mark-message-read	Client/Admin → Server	{ messageId }	Mark message as read
 message-read-update	Server → Room	{ messageId, userId }	Update read status
+
+
+
+need to data like send json
+
+
+2️⃣ Frontend (Client/Customer)
+Connect & join ticket
+const socket = io("ws://10.10.20.30:5000", {
+  auth: { token: "JWT_TOKEN" }
+});
+
+// Join ticket room
+socket.emit("join-support-ticket", { ticketId: "507f1f77bcf86cd799439011" });
+
+// Listen for new messages
+socket.on("new-support-message", (msg) => {
+  console.log("New message:", msg.data);
+});
+
+// Typing indicators
+socket.on("support-user-typing", ({ userId, isTyping }) => {
+  console.log(`${userId} is typing: ${isTyping}`);
+});
+
+// Send message
+function sendMessage(content) {
+  socket.emit("support-message", { ticketId: "507f1f77bcf86cd799439011", content });
+}
+
+// Typing
+function startTyping() {
+  socket.emit("support-typing-start", { ticketId: "507f1f77bcf86cd799439011" });
+}
+function stopTyping() {
+  socket.emit("support-typing-stop", { ticketId: "507f1f77bcf86cd799439011" });
+}
+
+// Mark as read
+function markRead(messageId) {
+  socket.emit("mark-message-read", { messageId });
+}
+
+3️⃣ Frontend (Admin)
+Connect & join dashboard
+const socket = io("ws://10.10.20.30:5000", {
+  auth: { token: "JWT_ADMIN_TOKEN" }
+});
+
+// Join dashboard
+socket.emit("join-support-dashboard");
+
+// Listen to all messages in ticket rooms
+socket.on("new-support-message", (msg) => {
+  console.log("New message in dashboard:", msg.data);
+});
+
+// Send message as admin
+function sendAdminMessage(ticketId, content) {
+  socket.emit("support-message", { ticketId, content });
+}
+
+// Typing indicators
+socket.on("support-user-typing", ({ userId, isTyping }) => {
+  console.log(`${userId} is typing: ${isTyping}`);
+});
+
+// Mark as read
+function markRead(messageId) {
+  socket.emit("mark-message-read", { messageId });
+}
+
+
+
+
+but when i send data i will send data is like object please make me real documantion 
+{
+    "ticketId": "507f1f77bcf86cd799439011"
+}
+
+{
+    "ticketId": "507f1f77bcf86cd799439011",
+    "content": "Hello, I need help with my payment issue",
+    "messageType": "text"
+}
