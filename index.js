@@ -12,7 +12,7 @@ const app = express();
 const server = http.createServer(app);
 
 // ✅ Correct CORS DOMAIN
-const CLIENT_URL = "https://raza-homequote-dashboard.vercel.app" || "http://localhost:5173";
+const CLIENT_URL = process.env.CLIENT_URL || "https://raza-homequote-dashboard.vercel.app";
 
 // ✅ Socket.IO CORS fixed
 const io = socketIo(server, {
