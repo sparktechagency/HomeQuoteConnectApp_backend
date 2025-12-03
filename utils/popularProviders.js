@@ -83,11 +83,16 @@ const getPopularProviders = async (options = {}) => {
     serviceCategory,
     specializations,
     minRating = 0,
+    maxRating,
     maxDistance,
     latitude,
     longitude,
     experienceLevel,
-    sortBy = 'popularity'
+    sortBy = 'popularity',
+    searchQuery,
+    city,
+    state,
+    isOnline
   } = options;
 
   // Build base filter for providers
@@ -111,13 +116,37 @@ const getPopularProviders = async (options = {}) => {
     filter.experienceLevel = experienceLevel;
   }
 
-  if (minRating > 0) {
-    filter.averageRating = { $gte: minRating };
+  // Rating range filter
+  if (minRating > 0 || maxRating) {
+    filter.averageRating = {};
+    if (minRating > 0) filter.averageRating.$gte = minRating;
+    if (maxRating) filter.averageRating.$lte = maxRating;
+  }
+
+  // Text search filter (name or business name)
+  if (searchQuery) {
+    filter.$or = [
+      { fullName: { $regex: searchQuery, $options: 'i' } },
+      { businessName: { $regex: searchQuery, $options: 'i' } }
+    ];
+  }
+
+  // Location text filters
+  if (city) {
+    filter['location.city'] = { $regex: city, $options: 'i' };
+  }
+  if (state) {
+    filter['location.state'] = { $regex: state, $options: 'i' };
+  }
+
+  // Online status filter
+  if (isOnline !== undefined) {
+    filter.isOnline = isOnline === 'true' || isOnline === true;
   }
 
   // Get all providers that match basic filters
   let providers = await User.find(filter)
-    .select('fullName profilePhoto bio businessName businessName experienceLevel specializations serviceAreas averageRating totalReviews totalCompletedJobs verificationStatus location credits isOnline lastActive')
+    .select('fullName profilePhoto bio businessName experienceLevel specializations serviceAreas averageRating totalReviews totalCompletedJobs verificationStatus location credits isOnline lastActive createdAt')
     .populate('specializations', 'title category')
     .lean();
 
@@ -160,6 +189,10 @@ const getPopularProviders = async (options = {}) => {
         return b.popularityScore - a.popularityScore;
       case 'rating':
         return b.averageRating - a.averageRating;
+      case 'reviews':
+        return b.totalReviews - a.totalReviews;
+      case 'jobs':
+        return b.totalCompletedJobs - a.totalCompletedJobs;
       case 'experience':
         const experienceOrder = { 'expert': 4, 'advanced': 3, 'intermediate': 2, 'beginner': 1 };
         return (experienceOrder[b.experienceLevel] || 0) - (experienceOrder[a.experienceLevel] || 0);
@@ -167,6 +200,14 @@ const getPopularProviders = async (options = {}) => {
         if (a.distance === null) return 1;
         if (b.distance === null) return -1;
         return a.distance - b.distance;
+      case 'latest':
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      case 'online':
+        // Online providers first, then by popularity
+        if (b.isOnline === a.isOnline) {
+          return b.popularityScore - a.popularityScore;
+        }
+        return b.isOnline ? 1 : -1;
       default:
         return b.popularityScore - a.popularityScore;
     }
@@ -206,9 +247,12 @@ const getPopularProviders = async (options = {}) => {
   return {
     providers: populatedProviders,
     pagination: {
-      current: page,
-      pages: Math.ceil(filteredProviders.length / limit),
-      total: filteredProviders.length
+      currentPage: page,
+      totalPages: Math.ceil(filteredProviders.length / limit),
+      totalItems: filteredProviders.length,
+      itemsPerPage: limit,
+      hasNextPage: page < Math.ceil(filteredProviders.length / limit),
+      hasPrevPage: page > 1
     }
   };
 };

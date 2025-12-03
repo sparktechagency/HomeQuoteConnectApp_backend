@@ -1,5 +1,6 @@
 const SupportTicket = require("../models/SupportTicket");
 const SupportMessage = require("../models/SupportMessage");
+const { cloudinary } = require("../utils/cloudinary"); // Make sure you have Cloudinary configured
 
 // Helper to normalize roles to match your schema enum
 const normalizeRole = (role) => {
@@ -30,11 +31,50 @@ const supportHandler = (io) => {
       try {
         const senderRole = normalizeRole(socket.userRole);
 
+        // -------------------------------
+        // Handle image attachments if present
+        // -------------------------------
+        if (content.attachments?.length) {
+          const uploadedAttachments = [];
+          for (const att of content.attachments) {
+            if (att.url && att.url.startsWith("data:")) {
+              // Upload Base64 image to Cloudinary
+              const uploadResult = await new Promise((resolve, reject) => {
+                const uploadStream = cloudinary.uploader.upload_stream(
+                  { folder: "support_messages" },
+                  (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                  }
+                );
+                const base64Data = att.url.replace(/^data:image\/\w+;base64,/, "");
+                const buffer = Buffer.from(base64Data, "base64");
+                uploadStream.end(buffer);
+              });
+
+              uploadedAttachments.push({
+                type: "image",
+                url: uploadResult.secure_url,
+                filename: att.filename || uploadResult.original_filename,
+                mimeType: att.mimeType || uploadResult.format,
+                size: att.size || uploadResult.bytes,
+                public_id: uploadResult.public_id,
+              });
+            } else {
+              uploadedAttachments.push(att); // if already a proper URL
+            }
+          }
+          content.attachments = uploadedAttachments;
+        }
+
+        // -------------------------------
+        // Save message in DB
+        // -------------------------------
         const message = await SupportMessage.create({
           ticket: ticketId,
           sender: socket.userId,
           senderRole,
-          content: { text: content, attachments: [] },
+          content,
           messageType,
         });
 
@@ -42,7 +82,6 @@ const supportHandler = (io) => {
           .populate("sender", "fullName profilePhoto role")
           .exec();
 
-        // Emit message to everyone in the ticket
         io.to(`support_ticket_${ticketId}`).emit("new-support-message", {
           event: "new-support-message",
           data: populatedMessage,
@@ -51,6 +90,7 @@ const supportHandler = (io) => {
         console.log(`Message sent by ${senderRole} (${socket.userId}) in ticket ${ticketId}`);
       } catch (err) {
         console.error("support-message error:", err);
+        socket.emit("error", { message: "Failed to send message" });
       }
     });
 
@@ -89,7 +129,6 @@ const supportHandler = (io) => {
         if (!message) return;
 
         await message.markAsRead(socket.userId);
-        // Optional: emit updated message to the room
         io.to(`support_ticket_${message.ticket}`).emit("message-read-update", { messageId, userId: socket.userId });
       } catch (err) {
         console.error("mark-message-read error:", err);

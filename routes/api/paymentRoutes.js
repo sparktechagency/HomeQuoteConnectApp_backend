@@ -6,7 +6,8 @@ const {
   handleWebhook,
   setupStripeConnect,
   getWallet,
-  requestWithdrawal
+  requestWithdrawal,
+  getTransactionByJob
 } = require('../../controllers/paymentController');
 const { protect } = require('../../middleware/auth');
 
@@ -23,5 +24,6 @@ router.put('/cash/:transactionId/confirm', confirmCashPayment);
 router.post('/setup-connect', setupStripeConnect);
 router.get('/wallet', getWallet);
 router.post('/withdraw', requestWithdrawal);
+router.get('/transaction/by-job/:jobId', getTransactionByJob);
 
 module.exports = router;

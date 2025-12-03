@@ -235,6 +235,6 @@ const emitRawEvent = (io, userId, event, data) => {
 module.exports = {
   notificationHandler,
   sendNotification,
-    emitRawEvent,
+  emitRawEvent,
   sendAdminNotification
 };

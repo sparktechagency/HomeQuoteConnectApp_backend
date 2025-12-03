@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const Job = require('../models/Job');
 const Quote = require('../models/Quote');
+const { uploadMultipleImages } = require('../utils/fileUtils');
 
 // @desc    Get user's chats
 // @route   GET /api/chats
@@ -217,7 +218,51 @@ const getChatMessages = async (req, res) => {
 const sendMessage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { content, messageType = 'text', media } = req.body;
+    // Support both JSON body and multipart/form-data (via multer)
+    const body = req.body || {};
+    let { content, messageType = 'text' } = body;
+    let media = [];
+
+    // If client sent media files (multipart/form-data), upload them to Cloudinary
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      try {
+        const uploaded = await uploadMultipleImages(req.files, 'raza-home-quote/message-media');
+        // Build media objects including type, filename, size, mimeType
+        media = uploaded.map((u, idx) => {
+          const file = req.files[idx];
+          let mtype = 'file';
+          if (file && file.mimetype) {
+            if (file.mimetype.startsWith('image/')) mtype = 'image';
+            else if (file.mimetype.startsWith('video/')) mtype = 'video';
+            else if (file.mimetype === 'application/pdf') mtype = 'document';
+            else mtype = 'file';
+          }
+          return {
+            type: mtype,
+            public_id: u.public_id,
+            url: u.url,
+            filename: file ? file.originalname : undefined,
+            size: file ? file.size : undefined,
+            mimeType: file ? file.mimetype : undefined,
+            uploadedAt: new Date()
+          };
+        });
+        // If messageType not provided and media present, set messageType to first media type
+        if ((!messageType || messageType === 'text') && media.length > 0) {
+          messageType = media[0].type;
+        }
+      } catch (uploadErr) {
+        console.error('Message media upload error:', uploadErr);
+        return res.status(500).json({ success: false, message: 'Error uploading message media' });
+      }
+    } else if (body.media) {
+      // Accept media passed as JSON (stringified) in body.media
+      try {
+        media = typeof body.media === 'string' ? JSON.parse(body.media) : body.media;
+      } catch (err) {
+        media = body.media; // leave as-is if not JSON
+      }
+    }
 
     // Verify user is part of the chat
     const chat = await Chat.findById(id).populate('participants.user');
@@ -258,6 +303,11 @@ const sendMessage = async (req, res) => {
           message: 'You can only message clients after they have accepted your quote'
         });
       }
+    }
+
+    // Validate content: must have text or media
+    if ((!content || content.trim() === '') && (!media || media.length === 0)) {
+      return res.status(400).json({ success: false, message: 'Message content or media required' });
     }
 
     // Create message

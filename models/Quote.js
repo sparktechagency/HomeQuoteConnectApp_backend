@@ -23,8 +23,8 @@ const quoteSchema = new mongoose.Schema({
   },
   Description: {
     type: String,
-    required: [true, 'Quote description is required'],
-    maxlength: [1000, 'Description cannot be more than 1000 characters']
+    // required: [true, 'Quote description is required'],
+    // maxlength: [1000, 'Description cannot be more than 1000 characters']
   },
   isAvailable: {
     type: Boolean,

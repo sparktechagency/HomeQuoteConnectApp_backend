@@ -34,18 +34,22 @@ const createSupportTicket = async (req, res) => {
       .populate('user', 'fullName profilePhoto email');
 
     // Notify admins about new ticket
-    if (req.app.get('io')) {
-      const admins = await User.find({ role: 'admin', isActive: true });
-      admins.forEach(admin => {
-        sendNotification(req.app.get('io'), admin._id, {
-          type: 'new_support_ticket',
-          title: 'New Support Ticket',
-          message: `New support ticket: ${title}`,
-          ticketId: ticket._id,
-          priority: ticket.priority
-        });
-      });
-    }
+if (req.app.get('io')) {
+  const adminId = "69082adc5f3a5e11c6acd908";  // YOUR ADMIN ID
+
+  console.log("Sending notification to admin:", adminId);
+
+  const savedNotification = await sendNotification(req.app.get('io'), adminId, {
+    type: 'new_support_ticket',
+    title: 'New Support Ticket',
+    message: `New support ticket: ${title}`,
+    ticketId: ticket._id,
+    priority: ticket.priority,
+    category: ticket.category
+  });
+
+  console.log("Notification created for admin:", savedNotification._id);
+}
 
     res.status(201).json({
       success: true,

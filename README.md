@@ -86,15 +86,15 @@ message-notification → to receiver’s personal room
 
 Receiver Side Listener:
 
-js
+
 Copy code
 socket.on("new-message", (message) => {
   console.log("New message received:", message);
 });
-🔹 Typing Indicators
+Typing Indicators
 Notify chat participants when user is typing.
 
-js
+
 Copy code
 // When user starts typing
 socket.emit("typing-start", { chatId });
@@ -286,6 +286,166 @@ Backend Developer: MD Mehedi hasan Akash
 Stack: Node.js, Express.js, MongoDB, Socket.IO
 
 
+
+
+
+===================================Notification =====================================================
+
+
+
+📌 ALL SOCKET EVENTS (FOR TESTING)
+1️⃣ Join Notification Room
+
+EVENT NAME: join-notifications
+METHOD: emit
+
+✅ Payload:
+{
+  "emit": "join-notifications",
+  "data": {
+    "userId": "67a52f487ec98f9a7e3b1c01"
+  }
+}
+
+📥 Expected Response:
+
+Event: notification-joined
+
+{
+  "message": "Successfully joined notification room",
+  "unreadCount": 5
+}
+
+2️⃣ Receive New Notifications (real-time)
+
+Your backend emits:
+
+io.to(`notifications_${userId}`).emit("new-notification", {...})
+
+📥 Postman Listener (no need to send anything):
+
+Just wait for event:
+
+new-notification
+
+
+Example:
+
+{
+  "_id": "67a5323e0b81129d5a5f0dc1",
+  "type": "job_update",
+  "title": "Job Assigned",
+  "message": "Provider accepted your job",
+  "data": { "jobId": "984gfs9r8sdf9sd" },
+  "createdAt": "2025-02-01T12:30:22.123Z"
+}
+
+3️⃣ Mark Single Notification as Read
+
+EVENT NAME: mark-notification-read
+
+🔥 Your backend accepts TWO formats (duplicated handlers):
+✅ Format A (flat):
+{
+  "emit": "mark-notification-read",
+  "data": {
+    "notificationId": "67b1e91c5c31986cee7bf955"
+  }
+}
+
+OR
+✅ Format B (nested — used in your second handler):
+{
+  "emit": "mark-notification-read",
+  "data": {
+    "data": {
+      "notificationId": "67b1e91c5c31986cee7bf955"
+    }
+  }
+}
+
+📥 Expected Response:
+
+Event: notification-read
+
+{
+  "notificationId": "67b1e91c5c31986cee7bf955"
+}
+
+4️⃣ Get Unread Notification Count
+
+EVENT NAME: get-unread-count
+
+Payload:
+{
+  "emit": "get-unread-count",
+  "data": "67a52f487ec98f9a7e3b1c01"
+}
+
+📥 Expected Response:
+
+Event: unread-count
+
+{
+  "count": 3
+}
+
+5️⃣ Admin Notification Broadcasting
+
+(You cannot test this directly from Postman WebSocket;
+You test it by hitting your backend REST API where sendAdminNotification() is used.)
+
+Example admin API body:
+{
+  "type": "system",
+  "title": "New User",
+  "message": "A new user signed up",
+  "priority": "high"
+}
+
+
+Admins connected will receive:
+
+new-notification
+
+6️⃣ Raw Event Sender (Testing Only)
+
+Your backend exposes:
+
+emitRawEvent(io, userId, event, data)
+
+Example Payload (backend-triggered):
+{
+  "event": "custom-event",
+  "data": { "hello": "world" }
+}
+
+
+User receives:
+
+custom-event
+
+🧪 FULL TESTING FLOW (Postman)
+Step 1 — Connect websocket
+ws://10.10.20.30:5000
+
+Step 2 — Join notifications room
+{
+  "emit": "join-notifications",
+  "data": { "userId": "USER_ID_HERE" }
+}
+
+Step 3 — Trigger a backend notification
+
+(Call API that uses sendNotification())
+
+Step 4 — Watch Postman for:
+
+new-notification
+
+notification-read
+
+unread-count
 
 
 

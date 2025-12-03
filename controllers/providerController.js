@@ -417,7 +417,14 @@ const getProviderDetails = async (req, res) => {
         serviceAreas location isOnline verificationStatus credits totalCompletedJobs
         averageRating totalReviews lastActive workingHours profileCompletion
       `)
-      .populate('specializations', 'title category')
+      .populate({
+        path: 'specializations',
+        select: 'title category',
+        populate: {
+          path: 'category',
+          select: 'title image description'
+        }
+      })
       .lean();
 
     if (!provider) {
@@ -443,6 +450,8 @@ const getProviderDetails = async (req, res) => {
 
     // Portfolio/projects
     const portfolio = await Portfolio.find({ provider: id })
+      .populate('serviceCategory', 'title image description')
+      .populate('specializations', 'title category')
       .sort({ createdAt: -1 })
       .lean();
 

@@ -9,6 +9,25 @@ const Review = require('../models/Review');
 // @access  Public
 const getPopularServiceProviders = async (req, res) => {
   try {
+  const allowedParams = [
+      "page", "limit", "serviceCategory", "specializations",
+      "minRating", "maxDistance", "latitude", "longitude",
+      "experienceLevel", "sortBy", "searchQuery"
+    ];
+
+    // ❌ Detect invalid / misspelled query params
+    const invalidParams = Object.keys(req.query).filter(
+      key => !allowedParams.includes(key)
+    );
+
+    if (invalidParams.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid query parameter(s): ${invalidParams.join(", ")}`
+      });
+    }
+
+    
     const {
       page = 1,
       limit = 12,
@@ -18,9 +37,17 @@ const getPopularServiceProviders = async (req, res) => {
       maxDistance,
       latitude,
       longitude,
+      searchQuery,
       experienceLevel,
       sortBy = 'popularity'
     } = req.query;
+
+     if (maxDistance && (!latitude || !longitude)) {
+      return res.status(400).json({
+        success: false,
+        message: "To use maxDistance, you must provide both latitude and longitude."
+      });
+    }
 
     const result = await getPopularProviders({
       page: parseInt(page),
@@ -32,7 +59,8 @@ const getPopularServiceProviders = async (req, res) => {
       latitude: latitude ? parseFloat(latitude) : null,
       longitude: longitude ? parseFloat(longitude) : null,
       experienceLevel,
-      sortBy
+      sortBy,
+      searchQuery    
     });
 
     res.status(200).json({
@@ -177,7 +205,9 @@ const bookProviderDirectly = async (req, res) => {
       description: specificInstructions || description,
       client: req.user._id,
       serviceCategory,
-        provider: id,   //  FIX ADDED HERE
+      provider: id,   //  FIX ADDED HERE
+      isDirectBooking: true,
+
 
       specializations: Array.isArray(specializations) ? specializations : JSON.parse(specializations || '[]'),
       location: typeof location === 'string' ? JSON.parse(location) : location,

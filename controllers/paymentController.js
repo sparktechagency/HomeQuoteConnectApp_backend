@@ -169,8 +169,12 @@ const confirmCashPayment = async (req, res) => {
     });
 
     // Update provider's wallet
-    const providerWallet = await Wallet.getOrCreate(transaction.quote.provider);
-    await providerWallet.addEarnings(transaction.providerAmount);
+const providerWallet = await Wallet.getOrCreate(transaction.quote.provider);
+
+// Only update totalEarned (do not touch availableBalance)
+providerWallet.totalEarned = providerWallet.totalEarned + transaction.providerAmount;
+
+await providerWallet.save();
 
     // Update provider stats
     await User.findByIdAndUpdate(transaction.quote.provider, {
@@ -444,30 +448,170 @@ const checkStripeAccountStatus = async (req, res) => {
   }
 };
 
-// @desc    Get wallet balance
+// @desc    Get wallet balance + statistics
 // @route   GET /api/payments/wallet
 // @access  Private
 const getWallet = async (req, res) => {
   try {
     const wallet = await Wallet.getOrCreate(req.user._id);
-    
-    // Get recent transactions
+
+    // Recent transactions (client or provider perspective)
     const transactions = await Transaction.find({
       $or: [
-        { user: req.user._id }, // Client payments made
-        { 'quote.provider': req.user._id } // Provider earnings
+        { user: req.user._id },
+        { 'quote.provider': req.user._id }
       ]
     })
-    .populate('job', 'title')
-    .populate('quote')
-    .sort({ createdAt: -1 })
-    .limit(10);
+      .populate('job', 'title')
+      .populate('quote')
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    // Statistics helper: date ranges
+    const getRange = (period) => {
+      const now = new Date();
+      let start, end;
+      switch (period) {
+        case 'today':
+          start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+          break;
+        case 'this_week': {
+          const day = now.getDay();
+          const diffToSunday = day; // week starts Sunday
+          start = new Date(now);
+          start.setDate(now.getDate() - diffToSunday);
+          start.setHours(0, 0, 0, 0);
+          end = new Date(start);
+          end.setDate(start.getDate() + 6);
+          end.setHours(23, 59, 59, 999);
+          break;
+        }
+        case 'last_month':
+          start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+          break;
+        case 'this_month':
+          start = new Date(now.getFullYear(), now.getMonth(), 1);
+          end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+          break;
+        case 'this_year':
+          start = new Date(now.getFullYear(), 0, 1);
+          end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+          break;
+        case 'all_time':
+        default:
+          start = new Date(0);
+          end = new Date();
+      }
+      return { start, end };
+    };
+
+    // Compute stats for a given period
+    const computeStats = async (period) => {
+      const { start, end } = getRange(period);
+
+      // Booking count: number of transactions involving this user (as client or provider) in range
+      const bookingFilter = {
+        createdAt: { $gte: start, $lte: end },
+        $or: [
+          { user: req.user._id },
+          { 'quote.provider': req.user._id }
+        ]
+      };
+
+      const totalBookings = await Transaction.countDocuments(bookingFilter);
+
+      // Earnings: sum providerAmount for transactions where this user is the provider
+      const earningsAgg = await Transaction.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: start, $lte: end },
+            status: { $in: ['completed', 'pending', 'processing'] },
+            // only include rows that belong to this provider
+            
+          }
+        },
+        {
+          $lookup: {
+            from: 'quotes',
+            localField: 'quote',
+            foreignField: '_id',
+            as: 'quoteDoc'
+          }
+        },
+        { $unwind: '$quoteDoc' },
+        {
+          $match: { 'quoteDoc.provider': req.user._id }
+        },
+        {
+          $group: { _id: null, total: { $sum: '$providerAmount' } }
+        }
+      ]);
+
+      const totalEarnings = earningsAgg.length > 0 ? earningsAgg[0].total : 0;
+
+      // Trend: compare to previous equal-length period
+      const ms = end.getTime() - start.getTime();
+      const prevEnd = new Date(start.getTime());
+      const prevStart = new Date(start.getTime() - ms);
+
+      const prevBookings = await Transaction.countDocuments({
+        createdAt: { $gte: prevStart, $lte: prevEnd },
+        $or: [
+          { user: req.user._id },
+          { 'quote.provider': req.user._id }
+        ]
+      });
+
+      const prevEarningsAgg = await Transaction.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: prevStart, $lte: prevEnd },
+            status: { $in: ['completed', 'pending', 'processing'] }
+          }
+        },
+        {
+          $lookup: {
+            from: 'quotes',
+            localField: 'quote',
+            foreignField: '_id',
+            as: 'quoteDoc'
+          }
+        },
+        { $unwind: '$quoteDoc' },
+        { $match: { 'quoteDoc.provider': req.user._id } },
+        { $group: { _id: null, total: { $sum: '$providerAmount' } } }
+      ]);
+
+      const prevEarnings = prevEarningsAgg.length > 0 ? prevEarningsAgg[0].total : 0;
+
+      const bookingTrend = prevBookings === 0 ? 100 : Math.round(((totalBookings - prevBookings) / prevBookings) * 100);
+      const earningsTrend = prevEarnings === 0 ? 100 : Math.round(((totalEarnings - prevEarnings) / prevEarnings) * 100);
+
+      return {
+        period,
+        totalBookings,
+        totalEarnings,
+        bookingTrend,
+        earningsTrend
+      };
+    };
+
+    // Build stats for requested period or all standard periods
+    const { period } = req.query;
+    const periods = period ? [period] : ['today', 'this_week', 'this_month', 'last_month', 'this_year', 'all_time'];
+    const statistics = {};
+    for (const p of periods) {
+      statistics[p] = await computeStats(p);
+    }
 
     res.status(200).json({
       success: true,
       data: {
         wallet,
-        recentTransactions: transactions
+        recentTransactions: transactions,
+        statistics
       }
     });
 
@@ -627,6 +771,65 @@ const requestWithdrawal = async (req, res) => {
 };
 
 
+// @desc    Get transaction by job ID
+// @route   GET /api/payments/transaction/by-job/:jobId
+// @access  Private (Client + Provider)
+const getTransactionByJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    // Find the transaction associated with this job
+    const transaction = await Transaction.findOne({
+      job: jobId
+    })
+    .populate('job')
+    .populate('quote')
+    .populate('user');
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'No transaction found for this job'
+      });
+    }
+
+    // Optional: authorization check
+    // if (
+    //   req.user.role === 'client' &&
+    //   transaction.user._id.toString() !== req.user._id.toString()
+    // ) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: 'You are not authorized to view this transaction'
+    //   });
+    // }
+
+    if (
+      req.user.role === 'provider' &&
+      transaction.quote.provider.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view this transaction'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Transaction fetched successfully',
+      data: { transaction }
+    });
+
+  } catch (error) {
+    console.error('Get transaction by job error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching transaction',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   checkStripeAccountStatus,
   createPayment,
@@ -635,4 +838,5 @@ module.exports = {
   setupStripeConnect,
   getWallet,
   requestWithdrawal,
+  getTransactionByJob
 };

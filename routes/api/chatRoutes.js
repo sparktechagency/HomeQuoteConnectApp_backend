@@ -22,6 +22,6 @@ router.post('/', getOrCreateChat);
 router.post('/direct', sendDirectMessageToProvider);
 router.get('/unread/count', getUnreadCount);
 router.get('/:id/messages', getChatMessages);
-router.post('/:id/messages', sendMessage);
+router.post('/:id/messages', uploadMultiple('media', 5), handleUploadErrors, sendMessage);
 
 module.exports = router;

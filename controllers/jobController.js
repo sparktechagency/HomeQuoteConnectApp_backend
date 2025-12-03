@@ -3,6 +3,7 @@ const Job = require('../models/Job');
 const Quote = require('../models/Quote');
 const Category = require('../models/Category');
 const User = require('../models/User');
+const Review = require('../models/Review');
 const { uploadMultipleImages } = require('../utils/fileUtils');
 const { sendNotification } = require('../socket/notificationHandler');
 
@@ -160,7 +161,14 @@ const getJobs = async (req, res) => {
     } = req.query;
 
     // Build filter object
-    const filter = { status: 'pending' };
+  const filter = {
+      status: 'pending',
+      $or: [
+        { isDirectBooking: false },          // normal public jobs
+        { provider: req.user._id }           // direct booking only for assigned provider
+      ]
+    };
+
 
     // Service type filter
     if (serviceType) {
@@ -291,13 +299,17 @@ const getTodayJobs = async (req, res) => {
         $gte: today,
         $lt: tomorrow
       },
-      status: 'pending'
+      status: 'pending',
+      $or: [
+        { isDirectBooking: false },       // visible to all
+        { provider: req.user._id }        // direct job only for assigned provider
+      ]
     })
-    .populate('client', 'fullName profilePhoto email phoneNumber')
-    .populate('serviceCategory', 'title image')
-    .populate('specializations', 'title category')
-    .sort({ createdAt: -1 })
-    .limit(50);
+      .populate('client', 'fullName profilePhoto email phoneNumber')
+      .populate('serviceCategory', 'title image')
+      .populate('specializations', 'title category')
+      .sort({ createdAt: -1 })
+      .limit(50);
 
     res.status(200).json({
       success: true,
@@ -314,6 +326,7 @@ const getTodayJobs = async (req, res) => {
   }
 };
 
+
 // @desc    Get active jobs
 // @route   GET /api/jobs/active
 // @access  Private
@@ -321,14 +334,18 @@ const getActiveJobs = async (req, res) => {
   try {
     const jobs = await Job.find({
       status: { $in: ['pending', 'in_progress'] },
-      expiresAt: { $gt: new Date() }
+      expiresAt: { $gt: new Date() },
+      $or: [
+        { isDirectBooking: false },       // anyone can see
+        { provider: req.user._id }        // direct job only visible to assigned provider
+      ]
     })
-    .populate('client', 'fullName profilePhoto email phoneNumber')
-    .populate('serviceCategory', 'title image')
-    .populate('specializations', 'title category')
-    .populate('quotes')
-    .sort({ urgency: 1, createdAt: -1 })
-    .limit(100);
+      .populate('client', 'fullName profilePhoto email phoneNumber')
+      .populate('serviceCategory', 'title image')
+      .populate('specializations', 'title category')
+      .populate('quotes')
+      .sort({ urgency: 1, createdAt: -1 })
+      .limit(100);
 
     res.status(200).json({
       success: true,
@@ -370,13 +387,48 @@ const getJob = async (req, res) => {
       });
     }
 
+    // ❗ Siecurity check for direct booking jobs
+    // if (job.isDirectBooking === true && job.provider?.toString() !== req.user._id.toString()) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: 'You are not allowed to view this job'
+    //   });
+    // }
+
     // Increment view count
     job.viewCount += 1;
     await job.save();
 
+    // Fetch reviews for this job
+    const Review = require('../models/Review');
+    
+    // Client to Provider review
+    const clientToProviderReview = await Review.findOne({
+      job: job._id,
+      reviewType: 'client_to_provider'
+    })
+      .populate('reviewer', 'fullName profilePhoto')
+      .populate('reviewedUser', 'fullName profilePhoto businessName')
+      .lean();
+
+    // Provider to Client review
+    const providerToClientReview = await Review.findOne({
+      job: job._id,
+      reviewType: 'provider_to_client'
+    })
+      .populate('reviewer', 'fullName profilePhoto businessName')
+      .populate('reviewedUser', 'fullName profilePhoto')
+      .lean();
+
     res.status(200).json({
       success: true,
-      data: { job }
+      data: { 
+        job,
+        reviews: {
+          client_to_provider: clientToProviderReview || null,
+          provider_to_client: providerToClientReview || null
+        }
+      }
     });
 
   } catch (error) {
@@ -388,6 +440,7 @@ const getJob = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Get client's jobs
 // @route   GET /api/jobs/my-jobs
@@ -407,7 +460,7 @@ const getMyJobs = async (req, res) => {
     if (status) filter.status = status;
 
     const jobs = await Job.find(filter)
-    .populate('client', 'fullName email phone profilePhoto')
+      .populate('client', 'fullName email phone profilePhoto')
       .populate('serviceCategory', 'title image')
       .populate('specializations', 'title category')
       .populate({
@@ -424,10 +477,43 @@ const getMyJobs = async (req, res) => {
 
     const total = await Job.countDocuments(filter);
 
+    // Fetch reviews for each job
+    const jobsWithReviews = await Promise.all(
+      jobs.map(async (job) => {
+        const jobObj = job.toObject();
+
+        // Get client_to_provider review (client reviewing the provider)
+        const clientToProviderReview = await Review.findOne({
+          job: job._id,
+          reviewType: 'client_to_provider',
+          reviewer: req.user._id
+        })
+          .populate('reviewedUser', 'fullName profilePhoto businessName')
+          .lean();
+
+        // Get provider_to_client review (provider reviewing the client)
+        const providerToClientReview = await Review.findOne({
+          job: job._id,
+          reviewType: 'provider_to_client',
+          reviewedUser: req.user._id
+        })
+          .populate('reviewer', 'fullName profilePhoto businessName')
+          .lean();
+
+        return {
+          ...jobObj,
+          reviews: {
+            client_to_provider: clientToProviderReview || null,
+            provider_to_client: providerToClientReview || null
+          }
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
       data: {
-        jobs,
+        jobs: jobsWithReviews,
         pagination: {
           current: page,
           pages: Math.ceil(total / limit),
@@ -445,6 +531,7 @@ const getMyJobs = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Cancel a job
 // @route   PUT /api/jobs/:id/cancel

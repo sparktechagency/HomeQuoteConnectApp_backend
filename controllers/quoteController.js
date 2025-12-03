@@ -3,6 +3,7 @@ const Quote = require('../models/Quote');
 const Job = require('../models/Job');
 const User = require('../models/User');
 const { sendNotification } = require('../socket/notificationHandler');
+const Transaction = require('../models/Transaction');
 
 // @desc    Submit a quote for a job
 // @route   POST /api/quotes
@@ -298,6 +299,30 @@ const acceptQuote = async (req, res) => {
       { new: true }
     );
 
+    // Create initial transaction record on acceptance (no payment captured yet)
+    try {
+      const amount = Number(quote.price) || 0;
+      const commissionRate = 0.1; // 10% platform commission
+      const platformCommission = Math.round(amount * commissionRate);
+      const providerAmount = amount - platformCommission;
+
+      await Transaction.create({
+        user: quote.job.client, // payer (client)
+        job: quote.job._id,
+        quote: quote._id,
+        amount,
+        platformCommission,
+        providerAmount,
+        paymentMethod: 'cash', // default flow: cash on completion unless payment captured elsewhere
+        status: 'pending',
+        metadata: {
+          createdReason: 'quote_accepted_by_client'
+        }
+      });
+    } catch (e) {
+      console.warn('Transaction create warning (client accept):', e.message);
+    }
+
     // Decline all other quotes for this job except the accepted one
     await Quote.updateMany(
       {
@@ -488,7 +513,7 @@ const getMyQuotes = async (req, res) => {
       });
     }
 
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit  } = req.query;
 
     const filter = { provider: req.user._id };
     if (status) filter.status = status;
@@ -508,12 +533,40 @@ const getMyQuotes = async (req, res) => {
 
     const total = await Quote.countDocuments(filter);
 
+    // For each quote, fetch client_to_provider and provider_to_client reviews (if any)
+    const Review = require('../models/Review');
+
+    const quotesWithReviews = await Promise.all(quotes.map(async (q) => {
+      // Ensure job id is available
+      const jobId = q.job?._id || q.job;
+
+      const [clientToProvider, providerToClient] = await Promise.all([
+        Review.findOne({ job: jobId, reviewType: 'client_to_provider' })
+          .populate('reviewer', 'fullName profilePhoto')
+          .populate('reviewedUser', 'fullName profilePhoto')
+          .lean(),
+        Review.findOne({ job: jobId, reviewType: 'provider_to_client' })
+          .populate('reviewer', 'fullName profilePhoto')
+          .populate('reviewedUser', 'fullName profilePhoto')
+          .lean()
+      ]);
+
+      // Attach reviews (null if not present)
+      const quoteObj = q.toObject ? q.toObject() : JSON.parse(JSON.stringify(q));
+      quoteObj.reviews = {
+        client_to_provider: clientToProvider || null,
+        provider_to_client: providerToClient || null
+      };
+
+      return quoteObj;
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        quotes,
+        quotes: quotesWithReviews,
         pagination: {
-          current: page,
+          current: Number(page),
           pages: Math.ceil(total / limit),
           total
         }
@@ -626,6 +679,30 @@ const acceptQuoteAsProvider = async (req, res) => {
       },
       { new: true }
     ).populate('client');
+
+    // Create initial transaction record on acceptance by provider (direct booking acceptance)
+    try {
+      const amount = Number(quote.price) || 0;
+      const commissionRate = 0.1; // 10% platform commission
+      const platformCommission = Math.round(amount * commissionRate);
+      const providerAmount = amount - platformCommission;
+
+      await Transaction.create({
+        user: job.client?._id || quote.job.client, // payer (client)
+        job: quote.job._id,
+        quote: quote._id,
+        amount,
+        platformCommission,
+        providerAmount,
+        paymentMethod: 'cash',
+        status: 'pending',
+        metadata: {
+          createdReason: 'quote_accepted_by_provider'
+        }
+      });
+    } catch (e) {
+      console.warn('Transaction create warning (provider accept):', e.message);
+    }
 
     // Decline all other quotes for this job except the accepted one
     await Quote.updateMany(

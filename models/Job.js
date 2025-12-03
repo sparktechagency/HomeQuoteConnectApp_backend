@@ -14,7 +14,10 @@ const jobSchema = new mongoose.Schema({
     required: [true, 'Job description is required'],
     maxlength: [2000, 'Description cannot be more than 2000 characters']
   },
-  
+  isDirectBooking: {
+  type: Boolean,
+  default: false
+},
 provider: {
   type: mongoose.Schema.Types.ObjectId,
   ref: 'User',

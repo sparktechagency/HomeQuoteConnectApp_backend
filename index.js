@@ -51,18 +51,39 @@ app.set('io', io);
 require('./socket/initializeSockets')(io);
 
 // ✅ Routes
+
 app.use('/api/health', require('./routes/api/healthRoutes'));
 app.use('/api/auth', require('./routes/api/authRoutes'));
-// Backwards-compatible alias: some clients call /auth/login (no /api prefix).
-// Mount auth routes also at '/auth' so both '/api/auth/...' and '/auth/...' work.
-app.use('/auth', require('./routes/api/authRoutes'));
+app.use('/api/chats', require('./routes/api/chatRoutes'));
+app.use('/api/payments', require('./routes/api/paymentRoutes'));
+app.use('/api/reviews', require('./routes/api/reviewRoutes'));
+app.use('/api/support', require('./routes/api/supportRoutes'));
+app.use('/api/subscriptions', require('./routes/api/subscriptionRoutes'));
+app.use('/api/popular', require('./routes/api/popularRoutes'));
+app.use('/api/project-gallery', require('./routes/api/projectGalleryRoutes'));
+// Background check routes mounted early to avoid admin middleware precedence
+app.use('/api/background-check', require('./routes/api/backgroundCheckRoutes.js'));
+// Temporary alias for frontend double /api prefix (SHOULD BE FIXED IN FRONTEND)
+app.use('/api/api/background-check', require('./routes/api/backgroundCheckRoutes.js'));
+
+// Admin routes
+app.use('/api/admin', require('./routes/api/adminRoutes'));
+app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
+app.use('/api/categories',  require('./routes/api/categoryRoutes'));
+// Admin payment routes (separate file for payment management)
+app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
+app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
+app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
+app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
+app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
+app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
+app.use('/api/admin', require('./routes/api/adminReportRoutes'));
+app.use('/api/quotes', require('./routes/api/quoteRoutes'));
+app.use('/api/admin', require('./routes/api/adminSupportRoutes.js'));
 app.use('/api/profile', require('./routes/api/profileRoutes'));
 app.use('/api/jobs', require('./routes/api/jobRoutes'));
 app.use('/api/quotes', require('./routes/api/quoteRoutes'));
 app.use('/api/provider', require('./routes/api/providerRoutes'));
-// Public provider profiles (singular `provider` router above is protected; expose public profiles
-// under the plural path so requests like GET /api/providers/:id do NOT pass through the
-// protected provider router middleware.
 app.use('/api/providers', require('./routes/api/publicProviderRoutes.js'));
 app.use('/api/chats', require('./routes/api/chatRoutes'));
 app.use('/api/payments', require('./routes/api/paymentRoutes'));
@@ -74,7 +95,9 @@ app.use('/api/project-gallery', require('./routes/api/projectGalleryRoutes'));
 app.use('/api/admin', require('./routes/api/adminRoutes'));
 app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/categories',  require('./routes/api/categoryRoutes'));
-// Admin payment routes (separate file for payment management)
+// app.use('/api/admin/background-checks', require('./routes/api/adminBackgroundCheckRoutes'));
+
+// Content and reports
 app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
 app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
@@ -85,6 +108,21 @@ app.use('/api/admin', require('./routes/api/adminReportRoutes'));
 app.use('/api/admin', require('./routes/api/adminSupportRoutes.js')); 
 app.use('/api', require('./routes/api/contentRoutes'));
 app.use('/api/reports', require('./routes/api/reportRoutes'));
+app.use('/api', require('./routes/api/contentRoutes'));
+app.use('/api/reports', require('./routes/api/reportRoutes'));
+app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
+app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
+app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
+app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
+app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
+app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
+app.use('/api/admin', require('./routes/api/adminReportRoutes')); 
+app.use('/api/admin', require('./routes/api/adminSupportRoutes.js')); 
+app.use('/api', require('./routes/api/contentRoutes'));
+app.use('/api/reports', require('./routes/api/reportRoutes'));
+// app.use('/api/background-check', ...);
+// app.use('/api/api/background-check', ...);
+app.use('/api/admin/background-checks', require('./routes/api/adminBackgroundCheckRoutes'));
 // ✅ Error handlers
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 app.use(notFound);
