@@ -122,16 +122,28 @@ app.use('/api', require('./routes/api/contentRoutes'));
 app.use('/api/reports', require('./routes/api/reportRoutes'));
 // app.use('/api/background-check', ...);
 // app.use('/api/api/background-check', ...);
+
 app.use('/api/admin/background-checks', require('./routes/api/adminBackgroundCheckRoutes'));
+app.get('/', (req, res) => {
+  res.json({ message: 'MyQuote API is live! Use /api/health' });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'MyQuote backend is running!' });
+});
+
+
+
 // ✅ Error handlers
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 app.use(notFound);
 app.use(errorHandler);
 
 // ✅ Set HOST properly for local + LAN support
-const HOST = process.env.HOST || '0.0.0.0';
+const PORT = process.env.PORT || 3000;        // ← Azure sets process.env.PORT automatically
+const HOST = '0.0.0.0';                       // ← Required on Linux/Azure
 
-// ✅ Start Server
 server.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running at http://${HOST}:${PORT}`);
+  console.log(`Server running on port ${PORT} (Azure + Local)`);
+  console.log(`→ Live at https://my-node-backend-akash.azurewebsites.net`);
 });
