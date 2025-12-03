@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node index.js",
     "build": "echo \"no build\"",
-    "dev": "nodemon server.js",
+    "dev": "nodemon index.js",
     "test": "jest --watchAll --detectOpenHandles",
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage",
