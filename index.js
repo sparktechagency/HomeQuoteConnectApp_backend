@@ -5,7 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const connectDB = require('./config/database');
-const { PORT, NODE_ENV } = require('./config/env');
+const { NODE_ENV } = require('./config/env');
 
 // Initialize Express
 const app = express();
