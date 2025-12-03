@@ -11,6 +11,20 @@ const createSupportTicket = async (req, res) => {
   try {
     const { title, description, category, priority } = req.body;
 
+    // Check if user already has an open or in_progress ticket
+    const existingTicket = await SupportTicket.findOne({
+      user: req.user._id,
+      status: { $in: ['open', 'in_progress'] }
+    });
+
+    if (existingTicket) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have an active support ticket. Please wait until it is resolved or closed before creating a new one.',
+        data: { existingTicket }
+      });
+    }
+
     const ticket = await SupportTicket.create({
       title,
       description,
