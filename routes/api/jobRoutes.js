@@ -11,13 +11,13 @@ const {
   getPopularCategories,
   getJobsByCategory,
   updateJob,
-  deleteJob
+  deleteJob,
+  getJobInvoice
 } = require('../../controllers/jobController');
 const { protect } = require('../../middleware/auth');
 const { uploadMultiple, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
-
 // All routes are protected
 router.use(protect);
 
@@ -36,6 +36,7 @@ router.get('/my-jobs', getMyJobs);
 router.get('/popular-categories', getPopularCategories);
 router.get('/category/:categoryId', getJobsByCategory);
 router.get('/:id', getJob);
+
 router.put('/:id/cancel', cancelJob);
 // Update job (client only)
 router.put(
@@ -45,6 +46,7 @@ router.put(
   updateJob
 );
 
+router.get('/:id/invoice', getJobInvoice);
 // Delete job
 router.delete('/:id', deleteJob);
 

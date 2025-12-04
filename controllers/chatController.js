@@ -305,6 +305,31 @@ const sendMessage = async (req, res) => {
       }
     }
 
+    // Check if sender is blocked by receiver OR if sender has blocked receiver
+    const isBlockedByReceiver = chat.blockedUsers.some(
+      block => block.blockedBy.toString() === receiver.user._id.toString() && 
+               block.blockedUser.toString() === req.user._id.toString()
+    );
+
+    const senderHasBlocked = chat.blockedUsers.some(
+      block => block.blockedBy.toString() === req.user._id.toString() && 
+               block.blockedUser.toString() === receiver.user._id.toString()
+    );
+
+    if (isBlockedByReceiver) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot send messages to this user as they have blocked you'
+      });
+    }
+
+    if (senderHasBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot send messages to a user you have blocked. Unblock them first.'
+      });
+    }
+
     // Validate content: must have text or media
     if ((!content || content.trim() === '') && (!media || media.length === 0)) {
       return res.status(400).json({ success: false, message: 'Message content or media required' });
@@ -437,14 +462,57 @@ const sendDirectMessageToProvider = async (req, res) => {
     }
 
     // Guard against missing body
-    const { providerId, content, messageType = 'text', media, jobId, quoteId } = req.body || {};
+    const body = req.body || {};
+    let { providerId, content, messageType = 'text', jobId, quoteId } = body;
+    let media = [];
+
+    // If client sent media files (multipart/form-data), upload them to Cloudinary
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      try {
+        const uploaded = await uploadMultipleImages(req.files, 'raza-home-quote/message-media');
+        // Build media objects including type, filename, size, mimeType
+        media = uploaded.map((u, idx) => {
+          const file = req.files[idx];
+          let mtype = 'file';
+          if (file && file.mimetype) {
+            if (file.mimetype.startsWith('image/')) mtype = 'image';
+            else if (file.mimetype.startsWith('video/')) mtype = 'video';
+            else if (file.mimetype === 'application/pdf') mtype = 'document';
+            else mtype = 'file';
+          }
+          return {
+            type: mtype,
+            public_id: u.public_id,
+            url: u.url,
+            filename: file ? file.originalname : undefined,
+            size: file ? file.size : undefined,
+            mimeType: file ? file.mimetype : undefined,
+            uploadedAt: new Date()
+          };
+        });
+        // If messageType not provided and media present, set messageType to first media type
+        if ((!messageType || messageType === 'text') && media.length > 0) {
+          messageType = media[0].type;
+        }
+      } catch (uploadErr) {
+        console.error('Direct message media upload error:', uploadErr);
+        return res.status(500).json({ success: false, message: 'Error uploading message media' });
+      }
+    } else if (body.media) {
+      // Accept media passed as JSON (stringified) in body.media
+      try {
+        media = typeof body.media === 'string' ? JSON.parse(body.media) : body.media;
+      } catch (err) {
+        media = body.media; // leave as-is if not JSON
+      }
+    }
 
     // Validate request payload
     if (!providerId) {
       return res.status(400).json({ success: false, message: 'providerId is required' });
     }
-    if (!content || (typeof content === 'object' && !content.text && !(content.media && content.media.length))) {
-      return res.status(400).json({ success: false, message: 'content is required' });
+    if ((!content || content.trim() === '') && (!media || media.length === 0)) {
+      return res.status(400).json({ success: false, message: 'Message content or media required' });
     }
 
     // Validate provider
@@ -458,12 +526,37 @@ const sendDirectMessageToProvider = async (req, res) => {
     const participant2 = { userId: provider._id, role: provider.role };
     const chat = await Chat.findOrCreate(participant1, participant2, jobId || null, quoteId || null);
 
+    // Check if sender is blocked by provider OR if sender has blocked provider
+    const isBlockedByProvider = chat.blockedUsers.some(
+      block => block.blockedBy.toString() === provider._id.toString() && 
+               block.blockedUser.toString() === req.user._id.toString()
+    );
+
+    const senderHasBlocked = chat.blockedUsers.some(
+      block => block.blockedBy.toString() === req.user._id.toString() && 
+               block.blockedUser.toString() === provider._id.toString()
+    );
+
+    if (isBlockedByProvider) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot send messages to this provider as they have blocked you'
+      });
+    }
+
+    if (senderHasBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot send messages to a provider you have blocked. Unblock them first.'
+      });
+    }
+
     // Create message
     const message = await Message.create({
       chat: chat._id,
       sender: req.user._id,
       receiver: provider._id,
-      content: { text: content, media: media || [] },
+      content: { text: content, media: media },
       messageType
     });
 
@@ -554,6 +647,120 @@ const adminGetUserChats = async (req, res) => {
   }
 };
 
+// @desc    Block a user in chat
+// @route   POST /api/chats/:id/block
+// @access  Private
+const blockUser = async (req, res) => {
+  try {
+    const { id: chatId } = req.params;
+    const currentUserId = req.user._id;
+
+    // Find the chat
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({ success: false, message: 'Chat not found' });
+    }
+
+    // Verify user is part of this chat
+    const userInChat = chat.participants.some(p => p.user.toString() === currentUserId.toString());
+    if (!userInChat) {
+      return res.status(403).json({ success: false, message: 'Not authorized to block in this chat' });
+    }
+
+    // Get the other participant
+    const otherParticipant = chat.participants.find(p => p.user.toString() !== currentUserId.toString());
+    const blockedUserId = otherParticipant.user;
+
+    // Check if already blocked
+    const isAlreadyBlocked = chat.blockedUsers.some(
+      block => block.blockedBy.toString() === currentUserId.toString() && 
+               block.blockedUser.toString() === blockedUserId.toString()
+    );
+
+    if (isAlreadyBlocked) {
+      return res.status(400).json({ success: false, message: 'User is already blocked' });
+    }
+
+    // Add to blockedUsers
+    chat.blockedUsers.push({
+      blockedBy: currentUserId,
+      blockedUser: blockedUserId,
+      blockedAt: new Date()
+    });
+
+    await chat.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'User blocked successfully',
+      data: {
+        chatId: chat._id,
+        blockedUser: blockedUserId,
+        blockedAt: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Block user error:', error);
+    res.status(500).json({ success: false, message: 'Error blocking user', error: error.message });
+  }
+};
+
+// @desc    Unblock a user in chat
+// @route   POST /api/chats/:id/unblock
+// @access  Private
+const unblockUser = async (req, res) => {
+  try {
+    const { id: chatId } = req.params;
+    const currentUserId = req.user._id;
+
+    // Find the chat
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({ success: false, message: 'Chat not found' });
+    }
+
+    // Verify user is part of this chat
+    const userInChat = chat.participants.some(p => p.user.toString() === currentUserId.toString());
+    if (!userInChat) {
+      return res.status(403).json({ success: false, message: 'Not authorized to unblock in this chat' });
+    }
+
+    // Get the other participant
+    const otherParticipant = chat.participants.find(p => p.user.toString() !== currentUserId.toString());
+    const unblockedUserId = otherParticipant.user;
+
+    // Check if blocked by current user
+    const blockIndex = chat.blockedUsers.findIndex(
+      block => block.blockedBy.toString() === currentUserId.toString() && 
+               block.blockedUser.toString() === unblockedUserId.toString()
+    );
+
+    if (blockIndex === -1) {
+      return res.status(400).json({ success: false, message: 'User is not blocked' });
+    }
+
+    // Remove from blockedUsers
+    chat.blockedUsers.splice(blockIndex, 1);
+
+    await chat.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'User unblocked successfully',
+      data: {
+        chatId: chat._id,
+        unblockedUser: unblockedUserId,
+        unblockedAt: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Unblock user error:', error);
+    res.status(500).json({ success: false, message: 'Error unblocking user', error: error.message });
+  }
+};
+
 module.exports = {
   getChats,
   getOrCreateChat,
@@ -561,5 +768,7 @@ module.exports = {
   sendMessage,
   getUnreadCount,
   sendDirectMessageToProvider,
-  adminGetUserChats
+  adminGetUserChats,
+  blockUser,
+  unblockUser
 };

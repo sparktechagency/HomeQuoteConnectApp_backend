@@ -294,7 +294,8 @@ const acceptQuote = async (req, res) => {
       quote.job._id,
       {
         status: 'in_progress',
-        acceptedQuote: quote._id
+        acceptedQuote: quote._id,
+        provider: quote.provider._id
       },
       { new: true }
     );

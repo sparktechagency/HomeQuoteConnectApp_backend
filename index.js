@@ -139,11 +139,33 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 app.use(notFound);
 app.use(errorHandler);
 
-// ✅ Set HOST properly for local + LAN support
-const PORT = process.env.PORT || 3000;        // ← Azure sets process.env.PORT automatically
-const HOST = '0.0.0.0';                       // ← Required on Linux/Azure
 
-server.listen(PORT, HOST, () => {
-  console.log(`Server running on port ${PORT} (Azure + Local)`);
-  console.log(`→ Live at https://my-node-backend-akash.azurewebsites.net`);
+// ✅ Set HOST properly for local + LAN support
+// const PORT = process.env.PORT || 3000;        // ← Azure sets process.env.PORT automatically
+// const HOST = '0.0.0.0';                       // ← Required on Linux/Azure
+
+// server.listen(PORT, HOST, () => {
+//   console.log(`Server running on port ${PORT} (Azure + Local)`);
+//   console.log(`→ Live at https://my-node-backend-akash.azurewebsites.net`);
+// });
+
+// ----------------thats for local host--------------
+
+const HOST = process.env.HOST || "0.0.0.0";
+
+server.listen("5000", HOST, () => {
+  console.log(`🚀 Server running at http://${HOST}:5000`);
 });
+
+
+
+// ----------------thats for Live host when gitpush host--------------
+
+// const PORT = process.env.PORT || 3000;        
+// const HOST = '0.0.0.0';                       
+
+// server.listen(PORT, HOST, () => {
+//   console.log(`Server running on port ${PORT} (Azure + Local)`);
+//   console.log(`→ Live at https://my-node-backend-akash.azurewebsites.net`);
+// });
+

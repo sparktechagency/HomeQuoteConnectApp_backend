@@ -4,6 +4,8 @@ const Quote = require('../models/Quote');
 const Category = require('../models/Category');
 const User = require('../models/User');
 const Review = require('../models/Review');
+const Invoice = require('../models/Invoice');
+const Transaction = require('../models/Transaction');
 const { uploadMultipleImages } = require('../utils/fileUtils');
 const { sendNotification } = require('../socket/notificationHandler');
 
@@ -872,6 +874,184 @@ const deleteJob = async (req, res) => {
   }
 };
 
+  // @desc    Get invoice for completed job
+// @route   GET /api/jobs/:id/invoice
+// @access  Private (Client or Provider)
+const getJobInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find the job
+    const job = await Job.findById(id)
+      .populate('client', 'fullName email phoneNumber location')
+      .populate('provider', 'fullName email phoneNumber location businessName')
+      .populate('acceptedQuote')
+      .populate('serviceCategory', 'title');
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Job not found'
+      });
+    }
+
+    // Verify user is either client or provider
+    const isClient = job.client._id.toString() === req.user._id.toString();
+    const isProvider = job.provider && job.provider._id.toString() === req.user._id.toString();
+
+    if (!isClient && !isProvider) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this invoice'
+      });
+    }
+
+    // Check if job is completed
+    if (job.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invoice can only be generated for completed jobs'
+      });
+    }
+
+    // Validate accepted quote exists
+    if (!job.acceptedQuote) {
+      return res.status(400).json({
+        success: false,
+        message: 'No accepted quote found for this job'
+      });
+    }
+
+    // Validate provider exists
+    if (!job.provider) {
+      return res.status(400).json({
+        success: false,
+        message: 'No provider assigned to this job'
+      });
+    }
+
+    // Find the transaction for this job
+    const transaction = await Transaction.findOne({
+      job: job._id,
+      status: 'completed'
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'No completed transaction found for this job'
+      });
+    }
+
+    // Check if invoice already exists
+    let invoice = await Invoice.findOne({ job: job._id })
+      .populate('provider', 'fullName email phoneNumber location businessName')
+      .populate('client', 'fullName email phoneNumber location')
+      .populate('job', 'title description location')
+      .populate('quote', 'price description');
+
+    // If invoice doesn't exist, create it
+    if (!invoice) {
+      invoice = await Invoice.create({
+        job: job._id,
+        quote: job.acceptedQuote._id,
+        transaction: transaction._id,
+        provider: job.provider._id,
+        client: job.client._id,
+        pricing: {
+          subtotal: transaction.amount,
+          platformCommission: transaction.platformCommission,
+          platformCommissionRate: transaction.platformCommission / transaction.amount,
+          total: transaction.providerAmount
+        },
+        payment: {
+          paidAmount: transaction.amount,
+          paymentMethod: transaction.paymentMethod,
+          paymentStatus: transaction.status,
+          paidAt: transaction.paidAt || transaction.completedAt
+        },
+        issuedDate: new Date(),
+        status: 'paid'
+      });
+
+      // Populate the newly created invoice
+      invoice = await Invoice.findById(invoice._id)
+        .populate('provider', 'fullName email phoneNumber location businessName')
+        .populate('client', 'fullName email phoneNumber location')
+        .populate('job', 'title description location')
+        .populate('quote', 'price description');
+    }
+
+    // Build invoice response
+    const invoiceData = {
+      invoiceId: invoice.invoiceId,
+      issuedDate: invoice.issuedDate,
+      
+      // Service Provider Information
+      serviceProvider: {
+        name: invoice.provider?.businessName || invoice.provider?.fullName || 'N/A',
+        fullName: invoice.provider?.fullName || 'N/A',
+        email: invoice.provider?.email || 'N/A',
+        phoneNumber: invoice.provider?.phoneNumber || 'N/A',
+        address: invoice.provider?.location?.address || 
+                 `${invoice.provider?.location?.city || ''}, ${invoice.provider?.location?.state || ''}, ${invoice.provider?.location?.zipCode || ''}`.trim() || 'N/A'
+      },
+      
+      // Customer Information
+      customer: {
+        name: invoice.client?.fullName || 'N/A',
+        email: invoice.client?.email || 'N/A',
+        phoneNumber: invoice.client?.phoneNumber || 'N/A',
+        address: invoice.client?.location?.address || 
+                 `${invoice.client?.location?.city || ''}, ${invoice.client?.location?.state || ''}, ${invoice.client?.location?.zipCode || ''}`.trim() || 'N/A'
+      },
+      
+      // Job Information
+      jobDetails: {
+        jobTitle: invoice.job?.title || job.title || 'N/A',
+        jobDescription: invoice.job?.description || job.description || 'N/A',
+        jobLocation: invoice.job?.location?.address || job.location?.address ||
+                    `${invoice.job?.location?.details?.completeAddress || job.location?.details?.completeAddress || ''}, ${invoice.job?.location?.details?.city || job.location?.details?.city || ''}, ${invoice.job?.location?.details?.state || job.location?.details?.state || ''}`.trim() || 'N/A',
+        serviceCategory: job.serviceCategory?.title || 'N/A'
+      },
+      
+      // Pricing Breakdown
+      pricing: {
+        subtotal: invoice.pricing.subtotal,
+        platformCommission: invoice.pricing.platformCommission,
+        platformCommissionRate: `${(invoice.pricing.platformCommissionRate * 100).toFixed(0)}%`,
+        total: invoice.pricing.total
+      },
+      
+      // Payment Information
+      payment: {
+        paidAmount: invoice.payment.paidAmount,
+        paymentMethod: invoice.payment.paymentMethod,
+        paymentStatus: invoice.payment.paymentStatus,
+        paidAt: invoice.payment.paidAt
+      },
+      
+      // Metadata
+      createdAt: invoice.createdAt,
+      updatedAt: invoice.updatedAt
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Invoice retrieved successfully',
+      data: invoiceData
+    });
+
+  } catch (error) {
+    console.error('Get job invoice error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving invoice',
+      error: error.message
+    });
+  }
+};
+
   module.exports = {
     createJob,
     getJobs,
@@ -883,5 +1063,6 @@ const deleteJob = async (req, res) => {
     getPopularCategories,
     getJobsByCategory,
     updateJob,
-    deleteJob
+    deleteJob,
+    getJobInvoice
   };
