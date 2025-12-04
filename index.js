@@ -12,15 +12,22 @@ const app = express();
 const server = http.createServer(app);
 
 // ✅ Correct CORS DOMAIN
-const CLIENT_URL = process.env.CLIENT_URL || "https://raza-homequote-dashboard.vercel.app";
+const allowedOrigins = [
+  "http://localhost:5173",                    // ← Your local frontend
+  "http://localhost:3000",                    // ← If you use port 3000
+  "https://raza-homequote-dashboard.vercel.app", // ← Your live frontend
+  "https://myqoute-eudjatd9a3f8eua8.southeastasia-01.azurewebsites.net" // optional
+];
+// const CLIENT_URL = process.env.CLIENT_URL || "https://raza-homequote-dashboard.vercel.app";
 
 // ✅ Socket.IO CORS fixed
 const io = socketIo(server, {
   cors: {
-    origin: CLIENT_URL,
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  transports: ["polling", "websocket"]  // ← Works even on Azure Free tier!
 });
 
 // DB Connect
