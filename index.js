@@ -177,10 +177,9 @@ app.use(errorHandler);
 // ----------------thats for Live host when gitpush host--------------
 
 const PORT = process.env.PORT || 3000;        
-const HOST = '0.0.0.0';                       
+                  
 
-server.listen(PORT, HOST, () => {
-  console.log(`Server running on port ${PORT} (Azure + Local)`);
-  console.log(`→ Live at https://my-node-backend-akash.azurewebsites.net`);
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
