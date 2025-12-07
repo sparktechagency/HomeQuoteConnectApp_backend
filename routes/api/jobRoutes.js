@@ -18,36 +18,39 @@ const { protect } = require('../../middleware/auth');
 const { uploadMultiple, handleUploadErrors } = require('../../config/multer');
 
 const router = express.Router();
-// All routes are protected
-router.use(protect);
 
-// Job routes
+// Public routes (no authentication required)
+router.get('/today', getTodayJobs);
+router.get('/active', getActiveJobs);
+router.get('/popular-categories', getPopularCategories);
+router.get('/category/:categoryId', getJobsByCategory);
+
+// Protected routes (authentication required)
 router.post(
   '/',
+  protect,
   uploadMultiple('photos', 10),
   handleUploadErrors,
   createJob
 );
 
-router.get('/', getJobs);
-router.get('/today', getTodayJobs);
-router.get('/active', getActiveJobs);
-router.get('/my-jobs', getMyJobs);
-router.get('/popular-categories', getPopularCategories);
-router.get('/category/:categoryId', getJobsByCategory);
-router.get('/:id', getJob);
+router.get('/', protect, getJobs);
 
-router.put('/:id/cancel', cancelJob);
+router.get('/my-jobs', protect, getMyJobs);
+router.get('/:id', protect, getJob);
+
+router.put('/:id/cancel', protect, cancelJob);
 // Update job (client only)
 router.put(
   '/:id',
+  protect,
   uploadMultiple('photos', 10),
   handleUploadErrors,
   updateJob
 );
 
-router.get('/:id/invoice', getJobInvoice);
+router.get('/:id/invoice', protect, getJobInvoice);
 // Delete job
-router.delete('/:id', deleteJob);
+router.delete('/:id', protect, deleteJob);
 
 module.exports = router;

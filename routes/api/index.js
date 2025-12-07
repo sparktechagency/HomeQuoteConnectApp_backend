@@ -17,6 +17,7 @@ const categories = require('./categoryRoutes.js');
 const adminPaymentRoutes = require('./adminPaymentRoutes.js');
 const adminSubscriptionRoutes = require('./adminSubscriptionRoutes.js');
 const adminCreditRoutes = require('./adminCreditRoutes.js');
+const notifications = require('./notificationRoutes.js');
 
 _.use("/auth", authRouter);
 _.use('/profile', profileRoutes);
@@ -36,6 +37,7 @@ _.use('/admin/categories', adminCategoryRoutes);
 _.use('/admin/payments', adminPaymentRoutes);
 _.use('/admin/subscriptions', adminSubscriptionRoutes);
 _.use('/admin/credits', adminCreditRoutes);
+
 _.use('/admin', admin);
 
 

@@ -96,6 +96,7 @@ app.use('/api/admin', require('./routes/api/adminReportRoutes'));
 app.use('/api/quotes', require('./routes/api/quoteRoutes'));
 app.use('/api/admin', require('./routes/api/adminSupportRoutes.js'));
 app.use('/api/profile', require('./routes/api/profileRoutes'));
+app.use('/api/notifications', require('./routes/api/notificationRoutes'));
 app.use('/api/jobs', require('./routes/api/jobRoutes'));
 app.use('/api/quotes', require('./routes/api/quoteRoutes'));
 app.use('/api/provider', require('./routes/api/providerRoutes'));

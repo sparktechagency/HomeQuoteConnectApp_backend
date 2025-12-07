@@ -288,7 +288,7 @@ const getJobs = async (req, res) => {
 
 // @desc    Get today's jobs
 // @route   GET /api/jobs/today
-// @access  Private
+// @access  Public
 const getTodayJobs = async (req, res) => {
   try {
     const today = new Date();
@@ -296,17 +296,27 @@ const getTodayJobs = async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const jobs = await Job.find({
+    // Build query based on authentication status
+    const query = {
       preferredDate: {
         $gte: today,
         $lt: tomorrow
       },
-      status: 'pending',
-      $or: [
+      status: 'pending'
+    };
+
+    // If user is authenticated, show both public jobs and their direct jobs
+    // If not authenticated, only show public jobs
+    if (req.user && req.user._id) {
+      query.$or = [
         { isDirectBooking: false },       // visible to all
         { provider: req.user._id }        // direct job only for assigned provider
-      ]
-    })
+      ];
+    } else {
+      query.isDirectBooking = false;     // only public jobs for unauthenticated users
+    }
+
+    const jobs = await Job.find(query)
       .populate('client', 'fullName profilePhoto email phoneNumber')
       .populate('serviceCategory', 'title image')
       .populate('specializations', 'title category')
@@ -331,17 +341,27 @@ const getTodayJobs = async (req, res) => {
 
 // @desc    Get active jobs
 // @route   GET /api/jobs/active
-// @access  Private
+// @access  Public
 const getActiveJobs = async (req, res) => {
   try {
-    const jobs = await Job.find({
+    // Build query based on authentication status
+    const query = {
       status: { $in: ['pending', 'in_progress'] },
-      expiresAt: { $gt: new Date() },
-      $or: [
+      expiresAt: { $gt: new Date() }
+    };
+
+    // If user is authenticated, show both public jobs and their direct jobs
+    // If not authenticated, only show public jobs
+    if (req.user && req.user._id) {
+      query.$or = [
         { isDirectBooking: false },       // anyone can see
         { provider: req.user._id }        // direct job only visible to assigned provider
-      ]
-    })
+      ];
+    } else {
+      query.isDirectBooking = false;     // only public jobs for unauthenticated users
+    }
+
+    const jobs = await Job.find(query)
       .populate('client', 'fullName profilePhoto email phoneNumber')
       .populate('serviceCategory', 'title image')
       .populate('specializations', 'title category')
@@ -484,6 +504,16 @@ const getMyJobs = async (req, res) => {
       jobs.map(async (job) => {
         const jobObj = job.toObject();
 
+        // Filter out quotes with price 0
+        if (jobObj.quotes && Array.isArray(jobObj.quotes)) {
+          jobObj.quotes = jobObj.quotes.filter(quote => quote.price && quote.price > 0);
+        }
+
+        // Only include jobs that have at least one valid quote (price > 0)
+        if (!jobObj.quotes || jobObj.quotes.length === 0) {
+          return null; // This job will be filtered out
+        }
+
         // Get client_to_provider review (client reviewing the provider)
         const clientToProviderReview = await Review.findOne({
           job: job._id,
@@ -512,14 +542,20 @@ const getMyJobs = async (req, res) => {
       })
     );
 
+    // Filter out jobs with no valid quotes (price > 0)
+    const validJobs = jobsWithReviews.filter(job => job !== null);
+
+    // Update total count to reflect filtered jobs
+    const totalValidJobs = validJobs.length;
+
     res.status(200).json({
       success: true,
       data: {
-        jobs: jobsWithReviews,
+        jobs: validJobs,
         pagination: {
           current: page,
-          pages: Math.ceil(total / limit),
-          total
+          pages: Math.ceil(totalValidJobs / limit),
+          total: totalValidJobs
         }
       }
     });
