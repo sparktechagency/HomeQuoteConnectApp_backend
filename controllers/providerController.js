@@ -413,7 +413,7 @@ const getProviderDetails = async (req, res) => {
 
     const provider = await User.findOne({ _id: id, role: 'provider' })
       .select(`
-        profilePhoto fullName businessName bio experienceLevel specializations
+        profilePhoto fullName phoneNumber businessName bio experienceLevel specializations
         serviceAreas location isOnline verificationStatus credits totalCompletedJobs
         averageRating totalReviews lastActive workingHours profileCompletion
       `)

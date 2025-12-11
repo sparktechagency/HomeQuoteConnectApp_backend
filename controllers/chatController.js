@@ -17,7 +17,7 @@ const getChats = async (req, res) => {
       'participants.user': req.user._id,
       isActive: true
     })
-    .populate('participants.user', 'fullName profilePhoto role isOnline lastActive')
+    .populate('participants.user', 'fullName profilePhoto phoneNumber role isOnline lastActive')
     .populate('job', 'title serviceCategory')
     .populate('quote')
     .sort({ updatedAt: -1 })
