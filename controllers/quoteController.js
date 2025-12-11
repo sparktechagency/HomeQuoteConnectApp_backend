@@ -91,7 +91,7 @@ const submitQuote = async (req, res) => {
 
     // Deduct credit from provider
     await User.findByIdAndUpdate(req.user._id, {
-      $inc: { credits: -1 }
+      $inc: { credits: -5 }
     });
 
     // Populate the quote with provider and job details

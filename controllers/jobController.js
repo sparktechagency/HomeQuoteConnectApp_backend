@@ -397,10 +397,57 @@ const getJob = async (req, res) => {
         path: 'quotes',
         populate: {
           path: 'provider',
-          select: 'fullName profilePhoto businessName averageRating totalReviews experienceLevel specializations'
+          select: [
+            'fullName',
+            'profilePhoto',
+            'businessName',
+            'averageRating',
+            'totalReviews',
+            'experienceLevel',
+            'specializations',
+            'credits',
+            'subscription',
+            'verificationStatus',
+            'serviceAreas',
+            'workingHours',
+            'location',
+            'bio'
+          ].join(' ')
+          ,
+          populate: {
+            path: 'specializations',
+            select: 'title category'
+          }
         }
       })
-      .populate('acceptedQuote');
+      .populate({
+        path: 'acceptedQuote',
+        populate: {
+          path: 'provider',
+          select: [
+            'fullName',
+            'profilePhoto',
+            'businessName',
+            'averageRating',
+            'totalReviews',
+            'experienceLevel',
+            'specializations',
+            'credits',
+            'subscription',
+            'verificationStatus',
+            'serviceAreas',
+            'workingHours',
+            'location',
+            'bio'
+          ].join(' '),
+          populate: {
+            path: 'specializations',
+            select: 'title category'
+          }
+        }
+      })
+      .populate('acceptedQuote'); // keep original populate if acceptedQuote has other fields to populate
+
 
     if (!job) {
       return res.status(404).json({
