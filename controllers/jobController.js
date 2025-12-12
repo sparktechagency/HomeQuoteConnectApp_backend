@@ -551,15 +551,7 @@ const getMyJobs = async (req, res) => {
       jobs.map(async (job) => {
         const jobObj = job.toObject();
 
-        // Filter out quotes with price 0
-        if (jobObj.quotes && Array.isArray(jobObj.quotes)) {
-          jobObj.quotes = jobObj.quotes.filter(quote => quote.price && quote.price > 0);
-        }
 
-        // Only include jobs that have at least one valid quote (price > 0)
-        if (!jobObj.quotes || jobObj.quotes.length === 0) {
-          return null; // This job will be filtered out
-        }
 
         // Get client_to_provider review (client reviewing the provider)
         const clientToProviderReview = await Review.findOne({
