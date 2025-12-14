@@ -38,6 +38,7 @@ router.get('/', protect, getJobs);
 
 router.get('/my-jobs', protect, getMyJobs);
 router.get('/:id', protect, getJob);
+router.get('/:id', getJob);
 
 router.put('/:id/cancel', protect, cancelJob);
 // Update job (client only)

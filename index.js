@@ -67,6 +67,7 @@ require('./socket/initializeSockets')(io);
 
 // ✅ Routes
 
+app.use('/api/reports', require('./routes/api/reportRoutes'));
 app.use('/api/health', require('./routes/api/healthRoutes'));
 app.use('/api/auth', require('./routes/api/authRoutes'));
 app.use('/api/chats', require('./routes/api/chatRoutes'));
@@ -123,9 +124,9 @@ app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
 app.use('/api/admin', require('./routes/api/adminReportRoutes')); 
 app.use('/api/admin', require('./routes/api/adminSupportRoutes.js')); 
 app.use('/api', require('./routes/api/contentRoutes'));
-app.use('/api/reports', require('./routes/api/reportRoutes'));
+// app.use('/api/reports', require('./routes/api/reportRoutes'));
 app.use('/api', require('./routes/api/contentRoutes'));
-app.use('/api/reports', require('./routes/api/reportRoutes'));
+// app.use('/api/reports', require('./routes/api/reportRoutes'));
 app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
 app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
@@ -135,7 +136,6 @@ app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
 app.use('/api/admin', require('./routes/api/adminReportRoutes')); 
 app.use('/api/admin', require('./routes/api/adminSupportRoutes.js')); 
 app.use('/api', require('./routes/api/contentRoutes'));
-app.use('/api/reports', require('./routes/api/reportRoutes'));
 // app.use('/api/background-check', ...);
 // app.use('/api/api/background-check', ...);
 

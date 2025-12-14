@@ -871,7 +871,7 @@ const updateJob = async (req, res) => {
     if (job.quotes && job.quotes.length > 0 && req.app.get('io')) {
       const quotes = await Quote.find({ job: job._id }).populate('provider');
       quotes.forEach(q => {
-        sendNotificationToUser(req.app.get('io'), q.provider._id, {
+        sendNotification(req.app.get('io'), q.provider._id, {
           type: 'job_updated',
           title: 'Job Updated',
           message: `Job "${job.title}" has been updated by the client.`,

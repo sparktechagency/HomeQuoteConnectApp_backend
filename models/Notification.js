@@ -29,6 +29,7 @@ const notificationSchema = new mongoose.Schema({
       'verification_approved',
       'verification_rejected',
       "support_assigned",
+      "job_updated",
       'account_blocked',
       'account_unblocked',
       'stripe_account_verified',

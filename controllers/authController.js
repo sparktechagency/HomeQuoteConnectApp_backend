@@ -237,10 +237,35 @@ const register = async (req, res) => {
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already exists with this email'
-      });
+      if (existingUser.isVerified) {
+        return res.status(400).json({
+          success: false,
+          message: 'User already exists with this email. Please log in instead.'
+        });
+      } else {
+        // User exists but not verified - send new OTP
+        const otpRecord = await OTP.generateOTP(email, 'signup');
+        const emailSent = await sendOTPEmail(email, otpRecord.otp, existingUser.fullName);
+
+        if (!emailSent) {
+          await OTP.findByIdAndDelete(otpRecord._id);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to send verification email. Please try again.'
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: 'Verification OTP sent to your email. Please verify to complete registration.',
+          data: {
+            email,
+            requiresVerification: true,
+            otpExpiresAt: otpRecord.expiresAt,
+            userExists: true
+          }
+        });
+      }
     }
 
     // Parse location if provided
@@ -319,10 +344,21 @@ specializationsData = specializationsData.map(id => {
 
     const user = await User.create(userData);
 
-    // Generate token
-    const token = generateToken(user._id);
+    // Send OTP for email verification
+    const otpRecord = await OTP.generateOTP(email, 'signup');
+    const emailSent = await sendOTPEmail(email, otpRecord.otp, user.fullName);
 
-    // Prepare response data
+    if (!emailSent) {
+      // If email fails, delete the user and OTP record
+      await User.findByIdAndDelete(user._id);
+      await OTP.findByIdAndDelete(otpRecord._id);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification email. Please try again.'
+      });
+    }
+
+    // Prepare response data (without token since verification is required)
     const userResponse = {
       _id: user._id,
       fullName: user.fullName,
@@ -352,11 +388,12 @@ specializationsData = specializationsData.map(id => {
       await sendAdminNotification(req.app.get('io'), {
         type: 'new_user_registered',
         title: 'New User Registered',
-        message: `New ${user.role} registered: ${user.fullName}`,
+        message: `New ${user.role} registered: ${user.fullName} (pending verification)`,
         data: {
           userId: user._id,
           userRole: user.role,
-          registrationDate: user.createdAt
+          registrationDate: user.createdAt,
+          isVerified: false
         },
         category: 'user',
         priority: 'medium'
@@ -365,10 +402,11 @@ specializationsData = specializationsData.map(id => {
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: 'User registered successfully. Please check your email for verification code.',
       data: {
         user: userResponse,
-        token
+        requiresVerification: true,
+        otpExpiresAt: otpRecord.expiresAt
       }
     });
 
@@ -396,6 +434,18 @@ const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
+      });
+    }
+
+    // Check if user is verified
+    if (!user.isVerified) {
+      return res.status(401).json({
+        success: false,
+        message: 'Please verify your email before logging in. Check your email for the verification code.',
+        data: {
+          requiresVerification: true,
+          email: user.email
+        }
       });
     }
 
