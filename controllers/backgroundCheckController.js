@@ -31,23 +31,27 @@ const submitBackgroundCheck = async (req, res) => {
     }
 
     // Check if files are uploaded
-    if (!req.files || !req.files.idFront || !req.files.idBack || !req.files.consentForm) {
-      return errorResponse(res, 'Please upload all required documents: ID Front, ID Back, and Consent Form', 400);
+    if (!req.files || !req.files.idFront || !req.files.idBack) {
+      return errorResponse(res, 'Please upload all required documents: ID Front and ID Back', 400);
     }
 
     // Validate file types
     const idFront = req.files.idFront[0];
     const idBack = req.files.idBack[0];
-    const consentForm = req.files.consentForm[0];
 
     // ID documents must be images
     if (!idFront.mimetype.startsWith('image/') || !idBack.mimetype.startsWith('image/')) {
       return errorResponse(res, 'ID documents must be images (JPG, PNG)', 400);
     }
 
-    // Consent form can be image or PDF
-    if (!consentForm.mimetype.startsWith('image/') && consentForm.mimetype !== 'application/pdf') {
-      return errorResponse(res, 'Consent form must be an image or PDF', 400);
+    // Consent form is optional
+    let consentForm = null;
+    if (req.files.consentForm && req.files.consentForm[0]) {
+      consentForm = req.files.consentForm[0];
+      // Consent form can be image or PDF
+      if (!consentForm.mimetype.startsWith('image/') && consentForm.mimetype !== 'application/pdf') {
+        return errorResponse(res, 'Consent form must be an image or PDF', 400);
+      }
     }
 
     // Check for existing background check
@@ -64,20 +68,37 @@ const submitBackgroundCheck = async (req, res) => {
     }
 
     // Upload files to Cloudinary
-    const [idFrontResult, idBackResult, consentFormResult] = await Promise.all([
+    const uploadPromises = [
       uploadToCloudinary(idFront.buffer, 'raza-home-quote/background-checks/id-front'),
-      uploadToCloudinary(idBack.buffer, 'raza-home-quote/background-checks/id-back'),
-      uploadToCloudinary(consentForm.buffer, 'raza-home-quote/background-checks/consent-forms')
-    ]);
+      uploadToCloudinary(idBack.buffer, 'raza-home-quote/background-checks/id-back')
+    ];
+
+    // Add consent form upload if provided
+    if (consentForm) {
+      uploadPromises.push(
+        uploadToCloudinary(consentForm.buffer, 'raza-home-quote/background-checks/consent-forms')
+      );
+    }
+
+    const uploadResults = await Promise.all(uploadPromises);
+    const idFrontResult = uploadResults[0];
+    const idBackResult = uploadResults[1];
+    const consentFormResult = consentForm ? uploadResults[2] : null;
 
     // If resubmitting after rejection, delete old files
     if (existingCheck && existingCheck.status === 'rejected') {
       try {
-        await Promise.all([
+        const deletePromises = [
           existingCheck.idFront?.public_id && deleteFromCloudinary(existingCheck.idFront.public_id),
-          existingCheck.idBack?.public_id && deleteFromCloudinary(existingCheck.idBack.public_id),
-          existingCheck.consentForm?.public_id && deleteFromCloudinary(existingCheck.consentForm.public_id)
-        ]);
+          existingCheck.idBack?.public_id && deleteFromCloudinary(existingCheck.idBack.public_id)
+        ];
+
+        // Add consent form deletion if it exists
+        if (existingCheck.consentForm?.public_id) {
+          deletePromises.push(deleteFromCloudinary(existingCheck.consentForm.public_id));
+        }
+
+        await Promise.all(deletePromises.filter(Boolean));
       } catch (error) {
         console.error('Error deleting old files:', error);
         // Continue even if deletion fails
@@ -97,11 +118,6 @@ const submitBackgroundCheck = async (req, res) => {
         url: idBackResult.secure_url,
         uploadedAt: new Date()
       },
-      consentForm: {
-        public_id: consentFormResult.public_id,
-        url: consentFormResult.secure_url,
-        uploadedAt: new Date()
-      },
       status: 'pending',
       submittedAt: new Date(),
       reviewedBy: null,
@@ -109,6 +125,15 @@ const submitBackgroundCheck = async (req, res) => {
       reviewNotes: null,
       rejectionReason: null
     };
+
+    // Add consent form if provided
+    if (consentFormResult) {
+      backgroundCheckData.consentForm = {
+        public_id: consentFormResult.public_id,
+        url: consentFormResult.secure_url,
+        uploadedAt: new Date()
+      };
+    }
 
     let backgroundCheck;
     if (existingCheck) {
