@@ -175,6 +175,9 @@ const sendNotification = async (io, userId, payload) => {
       createdAt: new Date().toISOString()
     });
 
+     await Notification.findByIdAndUpdate(notification._id, {
+    delivered: true
+  });
     console.log(`new-notification saved & sent to room ${room}: ${payload.type}`);
 
     return notification;
