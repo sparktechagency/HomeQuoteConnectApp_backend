@@ -2,6 +2,7 @@
 const Job = require('../models/Job');
 const Quote = require('../models/Quote');
 const Category = require('../models/Category');
+const Specialization = require('../models/Specialization');
 const User = require('../models/User');
 const Review = require('../models/Review');
 const Invoice = require('../models/Invoice');
@@ -112,6 +113,35 @@ const createJob = async (req, res) => {
 
     // Update category popularity
     await Category.findByIdAndUpdate(serviceCategory, { $inc: { popularity: 1 } });
+
+    // Notify providers whose specializations match the job's niche
+    if (req.app.get('io')) {
+      try {
+        const specializationIds = Array.isArray(jobData.specializations) && jobData.specializations.length
+          ? jobData.specializations
+          : await Specialization.find({ category: serviceCategory }).distinct('_id');
+
+        if (specializationIds.length > 0) {
+          const providers = await User.find({
+            role: 'provider',
+            specializations: { $in: specializationIds }
+          }).select('_id');
+
+          await Promise.allSettled(
+            providers.map((provider) =>
+              sendNotification(req.app.get('io'), provider._id, {
+                type: 'new_job_in_niche',
+                title: 'New job in your niche',
+                message: `Job "${job.title}" matches your specialization.`,
+                jobId: job._id
+              })
+            )
+          );
+        }
+      } catch (notifyErr) {
+        console.error('Niche-based notification error:', notifyErr);
+      }
+    }
 
     // Notify nearby providers (socket)
     if (req.app.get('io')) {
