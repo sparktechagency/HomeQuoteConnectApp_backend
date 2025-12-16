@@ -16,6 +16,7 @@ const notificationSchema = new mongoose.Schema({
       'quote_declined',
       'quote_updated',
       'quote_cancelled',
+      "new_job",
       'job_cancelled',
       "payment_released_by_admin",
       'payment_successful',

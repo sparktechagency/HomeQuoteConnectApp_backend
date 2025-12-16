@@ -115,41 +115,48 @@ const createJob = async (req, res) => {
     await Category.findByIdAndUpdate(serviceCategory, { $inc: { popularity: 1 } });
 
     // Notify providers whose specializations match the job's niche
-    if (req.app.get('io')) {
+const io = req.app.get('io');
+
+    if (io) {
       try {
-        const specializationIds = Array.isArray(jobData.specializations) && jobData.specializations.length
-          ? jobData.specializations
-          : await Specialization.find({ category: serviceCategory }).distinct('_id');
+        // Get specialization IDs
+        let specializationIds = jobData.specializations;
 
-        if (specializationIds.length > 0) {
-          const providers = await User.find({
-            role: 'provider',
-            specializations: { $in: specializationIds }
-          }).select('_id');
-
-          await Promise.allSettled(
-            providers.map((provider) =>
-              sendNotification(req.app.get('io'), provider._id, {
-                type: 'new_job_in_niche',
-                title: 'New job in your niche',
-                message: `Job "${job.title}" matches your specialization.`,
-                jobId: job._id
-              })
-            )
-          );
+        if (!specializationIds.length) {
+          specializationIds = await Specialization.find({
+            category: serviceCategory
+          }).distinct('_id');
         }
-      } catch (notifyErr) {
-        console.error('Niche-based notification error:', notifyErr);
+
+        // Find nearby matching providers
+        const providers = await User.find({
+          role: 'provider',
+          specializations: { $in: specializationIds },
+          location: {
+            $near: {
+              $geometry: jobData.location,
+              $maxDistance: 50000 // 50 km
+            }
+          }
+        }).select('_id');
+
+        // Send notification
+        await Promise.allSettled(
+          providers.map(provider =>
+            sendNotification(io, provider._id, {
+              type: 'new_job',
+              title: 'New job near you',
+              message: `New job: ${job.title}`,
+              jobId: job._id
+            })
+          )
+        );
+      } catch (notifyError) {
+        console.error('Notification error:', notifyError);
       }
     }
 
-    // Notify nearby providers (socket)
-    if (req.app.get('io')) {
-      req.app.get('io').emit('new-job-available', {
-        job: populatedJob,
-        location: jobData.location
-      });
-    }
+
 
     res.status(201).json({
       success: true,
