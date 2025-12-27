@@ -7,6 +7,8 @@ const errorResponse = (res, message = 'Error', code = 500) => {
 };
 
 // Backwards-compatible aliases
+
+
 const success = successResponse;
 const error = errorResponse;
 
