@@ -8,7 +8,8 @@ console.log('✅ [BackgroundCheckRoutes] Provider background check routes loaded
 const { uploadFields } = require('../../config/multer');
 const {
   submitBackgroundCheck,
-  getMyBackgroundCheckStatus
+  getMyBackgroundCheckStatus,
+  createBackgroundCheckPaymentIntent
 } = require('../../controllers/backgroundCheckController');
 
 // Apply only protect — role check is done inside controller
@@ -35,6 +36,9 @@ router.post(
 );
 
 router.get('/status', getMyBackgroundCheckStatus);
+
+// Create payment intent for background check
+router.post('/create-payment-intent', createBackgroundCheckPaymentIntent);
 
 // Debug endpoint
 router.get('/debug', (req, res) => {

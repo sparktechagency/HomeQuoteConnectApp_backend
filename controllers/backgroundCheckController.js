@@ -1,9 +1,14 @@
 // controllers/backgroundCheckController.js
 const BackgroundCheck = require('../models/BackgroundCheck');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 const { success: successResponse, error: errorResponse } = require('../utils/response');
 const Notification = require('../models/Notification');
+const { createPaymentIntent, stripe } = require('../config/stripe');
+
+// Background check fee
+const BACKGROUND_CHECK_FEE = 30; // $30
 
 /**
  * @desc    Submit background check (Provider)
@@ -30,6 +35,101 @@ const submitBackgroundCheck = async (req, res) => {
       return errorResponse(res, 'Only provider accounts can submit background checks', 403);
     }
 
+    // Check for existing background check
+    const existingCheck = await BackgroundCheck.findOne({ provider: providerId });
+
+    // If already approved, don't allow resubmission
+    if (existingCheck && existingCheck.status === 'approved') {
+      return errorResponse(res, 'Your background check has already been approved', 400);
+    }
+
+    // If pending, don't allow resubmission
+    if (existingCheck && existingCheck.status === 'pending') {
+      return errorResponse(res, 'Your background check is currently under review', 400);
+    }
+
+    // ============ PAYMENT GATING - START ============
+    // Check if payment has already been made for this background check
+    let paymentCompleted = false;
+    let existingTransaction = null;
+
+    if (existingCheck && existingCheck.paymentStatus === 'paid') {
+      paymentCompleted = true;
+      console.log('[BackgroundCheck] Payment already completed for existing check');
+    }
+
+    // If payment not yet completed, require payment
+    if (!paymentCompleted) {
+      const { paymentIntentId } = req.body;
+
+      if (!paymentIntentId) {
+        return errorResponse(
+          res, 
+          'Payment required. Please provide paymentIntentId after completing payment.', 
+          402 // Payment Required
+        );
+      }
+
+      // Verify payment intent with Stripe
+      let paymentIntent;
+      try {
+        paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      } catch (stripeError) {
+        console.error('[BackgroundCheck] Stripe payment intent retrieval error:', stripeError);
+        return errorResponse(res, 'Invalid payment intent. Please try again.', 400);
+      }
+
+      // Verify payment was successful
+      if (paymentIntent.status !== 'succeeded') {
+        return errorResponse(
+          res, 
+          `Payment not completed. Status: ${paymentIntent.status}. Please complete payment first.`, 
+          402
+        );
+      }
+
+      // Verify payment amount matches background check fee
+      const paidAmount = paymentIntent.amount / 100; // Convert from cents to dollars
+      if (paidAmount < BACKGROUND_CHECK_FEE) {
+        return errorResponse(
+          res, 
+          `Invalid payment amount. Expected $${BACKGROUND_CHECK_FEE}, received $${paidAmount}`, 
+          400
+        );
+      }
+
+      // Check if this payment has already been used
+      const paymentAlreadyUsed = await BackgroundCheck.findOne({ 
+        stripePaymentIntentId: paymentIntentId 
+      });
+      
+      if (paymentAlreadyUsed) {
+        return errorResponse(res, 'This payment has already been used for a background check submission', 400);
+      }
+
+      // Create transaction record for this payment
+      existingTransaction = await Transaction.create({
+        user: providerId,
+        amount: BACKGROUND_CHECK_FEE,
+        platformCommission: BACKGROUND_CHECK_FEE, // Full amount goes to platform for background checks
+        providerAmount: 0, // No provider payout for background check fees
+        paymentMethod: 'card',
+        stripePaymentIntentId: paymentIntentId,
+        stripeChargeId: paymentIntent.latest_charge,
+        status: 'completed',
+        paidAt: new Date(),
+        completedAt: new Date(),
+        metadata: {
+          type: 'background_check_fee',
+          providerId: providerId.toString()
+        }
+      });
+
+      paymentCompleted = true;
+      console.log('[BackgroundCheck] Payment verified and transaction created:', existingTransaction._id);
+    }
+    // ============ PAYMENT GATING - END ============
+
     // Check if files are uploaded
     if (!req.files || !req.files.idFront || !req.files.idBack) {
       return errorResponse(res, 'Please upload all required documents: ID Front and ID Back', 400);
@@ -52,19 +152,6 @@ const submitBackgroundCheck = async (req, res) => {
       if (!consentForm.mimetype.startsWith('image/') && consentForm.mimetype !== 'application/pdf') {
         return errorResponse(res, 'Consent form must be an image or PDF', 400);
       }
-    }
-
-    // Check for existing background check
-    const existingCheck = await BackgroundCheck.findOne({ provider: providerId });
-
-    // If already approved, don't allow resubmission
-    if (existingCheck && existingCheck.status === 'approved') {
-      return errorResponse(res, 'Your background check has already been approved', 400);
-    }
-
-    // If pending, don't allow resubmission
-    if (existingCheck && existingCheck.status === 'pending') {
-      return errorResponse(res, 'Your background check is currently under review', 400);
     }
 
     // Upload files to Cloudinary
@@ -123,7 +210,13 @@ const submitBackgroundCheck = async (req, res) => {
       reviewedBy: null,
       reviewedAt: null,
       reviewNotes: null,
-      rejectionReason: null
+      rejectionReason: null,
+      // Payment information
+      paymentStatus: 'paid',
+      paymentAmount: BACKGROUND_CHECK_FEE,
+      paidAt: new Date(),
+      stripePaymentIntentId: req.body.paymentIntentId,
+      transaction: existingTransaction ? existingTransaction._id : null
     };
 
     // Add consent form if provided
@@ -208,6 +301,7 @@ const getMyBackgroundCheckStatus = async (req, res) => {
     const backgroundCheck = await BackgroundCheck.findOne({ provider: providerId })
       .populate('provider', 'name email phone photo')
       .populate('reviewedBy', 'name email')
+      .populate('transaction')
       .lean();
 
     if (!backgroundCheck) {
@@ -221,7 +315,79 @@ const getMyBackgroundCheckStatus = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Create payment intent for background check
+ * @route   POST /api/background-check/create-payment-intent
+ * @access  Private (Provider only)
+ */
+const createBackgroundCheckPaymentIntent = async (req, res) => {
+  try {
+    // Ensure request is authenticated
+    if (!req.user || !req.user.id) {
+      return errorResponse(res, 'Authentication required', 401);
+    }
+
+    const providerId = req.user.id;
+
+    // Check if user is a provider
+    const provider = await User.findById(providerId);
+    if (!provider) {
+      return errorResponse(res, 'User not found', 404);
+    }
+
+    if (provider.role !== 'provider') {
+      return errorResponse(res, 'Only provider accounts can request background check payments', 403);
+    }
+
+    // Check for existing background check
+    const existingCheck = await BackgroundCheck.findOne({ provider: providerId });
+
+    // If already approved, don't allow payment
+    if (existingCheck && existingCheck.status === 'approved') {
+      return errorResponse(res, 'Your background check has already been approved', 400);
+    }
+
+    // If pending, don't allow new payment
+    if (existingCheck && existingCheck.status === 'pending') {
+      return errorResponse(res, 'Your background check is currently under review', 400);
+    }
+
+    // Check if payment already completed
+    if (existingCheck && existingCheck.paymentStatus === 'paid') {
+      return errorResponse(res, 'Payment has already been completed for your background check', 400);
+    }
+
+    // Create Stripe payment intent
+    const paymentIntent = await createPaymentIntent(
+      BACKGROUND_CHECK_FEE, 
+      'usd', 
+      {
+        providerId: providerId.toString(),
+        type: 'background_check_fee',
+        providerName: provider.fullName || provider.name || provider.email
+      }
+    );
+
+    return successResponse(
+      res,
+      {
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        amount: BACKGROUND_CHECK_FEE,
+        currency: 'usd'
+      },
+      'Payment intent created successfully. Complete payment to submit background check.',
+      200
+    );
+
+  } catch (error) {
+    console.error('Error creating background check payment intent:', error);
+    return errorResponse(res, error.message || 'Error creating payment intent');
+  }
+};
+
 module.exports = {
   submitBackgroundCheck,
-  getMyBackgroundCheckStatus
+  getMyBackgroundCheckStatus,
+  createBackgroundCheckPaymentIntent
 };

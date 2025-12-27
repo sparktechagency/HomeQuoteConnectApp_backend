@@ -52,6 +52,27 @@ const backgroundCheckSchema = new mongoose.Schema({
   },
   resubmittedAt: Date,
   
+  // Payment Information
+  paymentRequired: {
+    type: Boolean,
+    default: true
+  },
+  paymentAmount: {
+    type: Number,
+    default: 30 // $30 background check fee
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'paid', 'failed', 'refunded'],
+    default: 'pending'
+  },
+  transaction: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Transaction'
+  },
+  stripePaymentIntentId: String,
+  paidAt: Date,
+  
   // Timestamps
   createdAt: {
     type: Date,
