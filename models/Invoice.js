@@ -119,7 +119,6 @@ invoiceSchema.pre('save', async function(next) {
 });
 
 // Indexes
-invoiceSchema.index({ invoiceId: 1 }, { unique: true });
 invoiceSchema.index({ job: 1 });
 invoiceSchema.index({ client: 1 });
 invoiceSchema.index({ provider: 1 });
