@@ -3,7 +3,7 @@ name: Deploy Node.js App to GCP VM
 on:
   push:
     branches:
-      - main  
+      - main
 
 jobs:
   deploy:
@@ -13,23 +13,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Copy project files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          source: "."
-          target: "/home/quotocloud/HomeQuoteConnectApp_backend"
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Install dependencies & restart app with PM2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
+      - name: Copy project files to server
+        run: |
+          rsync -az --delete \
+            --exclude=".git" \
+            --exclude="node_modules" \
+            --exclude=".env" \
+            ./ quotocloud@${{ secrets.VM_HOST }}:/home/quotocloud/HomeQuoteConnectApp_backend
+
+      - name: Install dependencies & restart app
+        run: |
+          ssh quotocloud@${{ secrets.VM_HOST }} << 'EOF'
             cd /home/quotocloud/HomeQuoteConnectApp_backend
             npm install --production
             pm2 restart homequote-backend || pm2 start index.js --name homequote-backend
             pm2 save
+          EOF
