@@ -14,6 +14,7 @@ const server = http.createServer(app);
 // ✅ Correct CORS DOMAIN
 const allowedOrigins = [
   "http://localhost:5173",                    // ← Your local frontend
+  "https://quoto.ca",
   "http://localhost:3000",                    // ← If you use port 3000
   "https://raza-homequote-dashboard.vercel.app", // ← Your live frontend
   "https://myqoute-eudjatd9a3f8eua8.southeastasia-01.azurewebsites.net" // optional
