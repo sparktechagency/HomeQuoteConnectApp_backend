@@ -1,6 +1,7 @@
 // controllers/authController.js
 const OTP = require('../models/OTP');
 const User = require('../models/User');
+const SystemSettings = require('../models/SystemSettings');
 const mongoose = require('mongoose');
 
 const { generateToken } = require('../utils/generateToken');
@@ -324,8 +325,9 @@ specializationsData = specializationsData.map(id => {
       userData.serviceAreas = serviceAreas;
       userData.workingHours = workingHours;
       
-      // Give free 50 credits to new providers
-      userData.credits = 50;
+      // Get signup credits from system settings (configurable by admin)
+      const settings = await SystemSettings.getSettings();
+      userData.credits = settings.creditSettings.signupCredits;
     }
 
     // If a profile photo was uploaded via multipart/form-data, upload to Cloudinary

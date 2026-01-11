@@ -22,7 +22,7 @@ const creditActivitySchema = new mongoose.Schema({
   // Activity Details
   type: {
     type: String,
-    enum: ['purchase', 'quote_submission', 'refund', 'bonus', 'subscription'],
+    enum: ['purchase', 'quote_submission', 'refund', 'bonus', 'subscription', 'adjustment'],
     required: true
   },
   description: {

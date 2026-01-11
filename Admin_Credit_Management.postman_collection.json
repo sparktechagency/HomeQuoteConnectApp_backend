@@ -1,0 +1,305 @@
+{
+  "info": {
+    "name": "Admin Credit Management API",
+    "description": "Complete collection for Admin Credit Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "System Settings",
+      "item": [
+        {
+          "name": "Get Credit Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "settings"]
+            },
+            "description": "Retrieve current system credit configuration including signup credits and verification credits."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Credit Settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signupCredits\": 75,\n  \"verificationCredits\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "settings"]
+            },
+            "description": "Update system-wide credit configuration. Affects all NEW provider registrations."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User Credit Management",
+      "item": [
+        {
+          "name": "Get User Credit Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/user/{{userId}}?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "user", "{{userId}}"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get a specific user's credit balance and transaction history with pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "Adjust User Credits - Add",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"creditChange\": 100,\n  \"reason\": \"Promotional bonus for top-rated provider\",\n  \"type\": \"bonus\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/adjust",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "adjust"]
+            },
+            "description": "Add credits to a user's account. Use positive numbers to add credits."
+          },
+          "response": []
+        },
+        {
+          "name": "Adjust User Credits - Deduct",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"creditChange\": -25,\n  \"reason\": \"Correction for duplicate credit assignment\",\n  \"type\": \"adjustment\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/adjust",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "adjust"]
+            },
+            "description": "Deduct credits from a user's account. Use negative numbers to deduct credits."
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Adjust Credits",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"adjustments\": [\n    {\n      \"userId\": \"60d5ec49f1b2c8b1f8c8e8e8\",\n      \"creditChange\": 50\n    },\n    {\n      \"userId\": \"60d5ec49f1b2c8b1f8c8e8e9\",\n      \"creditChange\": 50\n    },\n    {\n      \"userId\": \"60d5ec49f1b2c8b1f8c8e8ea\",\n      \"creditChange\": 75\n    }\n  ],\n  \"reason\": \"Q1 2026 Performance Bonus for Active Providers\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/bulk-adjust",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "bulk-adjust"]
+            },
+            "description": "Adjust credits for multiple users in a single operation. Returns success and failure details."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Statistics & History",
+      "item": [
+        {
+          "name": "Get Credit Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits/statistics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits", "statistics"]
+            },
+            "description": "Get comprehensive statistics about credit usage across the platform including total distributed, used, and in circulation."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Credit Activity History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits?page=1&limit=20&type=bonus&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "type",
+                  "value": "bonus",
+                  "description": "Filter by type: purchase, bonus, refund, quote_submission, adjustment, subscription"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "desc",
+                  "description": "Sort order: asc or desc"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by user name or email",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get paginated list of all credit activities with filtering and search options."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Credit Activity - All Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/credits?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "credits"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Get all credit activities without type filtering."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://your-api-domain.com",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "your_admin_jwt_token_here",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "60d5ec49f1b2c8b1f8c8e8e8",
+      "type": "string"
+    }
+  ]
+}
