@@ -30,9 +30,8 @@ jobs:
       - name: Install dependencies & restart app
         run: |
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            quotocloud@${{ secrets.VM_HOST }} << 'EOF'
-              cd /home/quotocloud/HomeQuoteConnectApp_backend
-              npm install --production
-              pm2 restart homequote-backend || pm2 start index.js --name homequote-backend
-              pm2 save
-            EOF
+            quotocloud@${{ secrets.VM_HOST }} \
+            "cd /home/quotocloud/HomeQuoteConnectApp_backend && \
+             npm install --production && \
+             (pm2 restart homequote-backend || pm2 start index.js --name homequote-backend) && \
+             pm2 save"
