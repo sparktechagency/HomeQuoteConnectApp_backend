@@ -19,6 +19,9 @@ The HomeQuoteConnect application implements a comprehensive OTP (One-Time Passwo
 
 **Endpoint**: `POST /api/auth/send-otp`
 
+
+
+
 **Description**: Sends a 6-digit OTP code to the user's email for verification.
 
 **Request Body**:
