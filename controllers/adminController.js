@@ -303,7 +303,7 @@ const verifyProvider = async (req, res) => {
     if (status === 'verified') {
       provider.verificationStatus = 'verified';
       // Give 25 free credits upon verification
-      provider.credits += 25;
+      // provider.credits += 25;
       // Mark individual verification documents as approved if present
       if (provider.verificationDocuments) {
         if (provider.verificationDocuments.businessLicense) {
@@ -340,7 +340,7 @@ const verifyProvider = async (req, res) => {
         type: status === 'verified' ? 'verification_approved' : 'verification_rejected',
         title: status === 'verified' ? 'Verification Approved' : 'Verification Rejected',
         message: status === 'verified' ?
-          'Your provider verification has been approved! You received 25 free credits.' :
+          'Your provider verification has been approved! You received  free credits.' :
           `Your verification was rejected. ${notes || 'Please submit valid documents.'}`
       });
     }

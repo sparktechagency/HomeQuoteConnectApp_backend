@@ -324,8 +324,8 @@ specializationsData = specializationsData.map(id => {
       userData.serviceAreas = serviceAreas;
       userData.workingHours = workingHours;
       
-      // Give free 25 credits to new providers
-      // userData.credits = 25;
+      // Give free 50 credits to new providers
+      userData.credits = 50;
     }
 
     // If a profile photo was uploaded via multipart/form-data, upload to Cloudinary
