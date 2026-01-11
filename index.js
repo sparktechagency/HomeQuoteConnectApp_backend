@@ -20,11 +20,6 @@ const allowedOrigins = [
   "https://myqoute-eudjatd9a3f8eua8.southeastasia-01.azurewebsites.net" // optional
 ];
 
-
-
-
-
-
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -183,6 +178,7 @@ app.use(errorHandler);
 
 
 // ----------------thats for Live host when gitpush host--------------
+
 
 const PORT = process.env.PORT || 8080;        
                   
