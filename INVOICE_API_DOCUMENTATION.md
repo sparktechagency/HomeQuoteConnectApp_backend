@@ -7,6 +7,9 @@ The Invoice API allows clients and providers to retrieve detailed invoices for c
 
 ## Endpoint
 
+
+
+
 ### Get Job Invoice
 
 **Endpoint**: `GET /api/jobs/:id/invoice`
