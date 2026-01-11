@@ -21,6 +21,7 @@ jobs:
       - name: Copy project files to server
         run: |
           rsync -az \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             --exclude=".git" \
             --exclude="node_modules" \
             --exclude=".env" \
@@ -28,9 +29,10 @@ jobs:
 
       - name: Install dependencies & restart app
         run: |
-          ssh quotocloud@${{ secrets.VM_HOST }} << 'EOF'
-            cd /home/quotocloud/HomeQuoteConnectApp_backend
-            npm install --production
-            pm2 restart homequote-backend || pm2 start index.js --name homequote-backend
-            pm2 save
-          EOF
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            quotocloud@${{ secrets.VM_HOST }} << 'EOF'
+              cd /home/quotocloud/HomeQuoteConnectApp_backend
+              npm install --production
+              pm2 restart homequote-backend || pm2 start index.js --name homequote-backend
+              pm2 save
+            EOF
