@@ -82,14 +82,15 @@ app.use('/api/background-check', require('./routes/api/backgroundCheckRoutes.js'
 app.use('/api/api/background-check', require('./routes/api/backgroundCheckRoutes.js'));
 
 // Admin routes
+app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
+app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
+app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/admin', require('./routes/api/adminRoutes'));
 app.use('/api/admin', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/categories',  require('./routes/api/categoryRoutes'));
 // Admin payment routes (separate file for payment management)
 app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
-app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
-app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
 app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
 app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
 app.use('/api/admin', require('./routes/api/adminReportRoutes'));
@@ -118,7 +119,6 @@ app.use('/api/admin', require('./routes/api/adminPaymentRoutes'));
 app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/webhooks', require('./routes/api/webhookRoutes'));
 app.use('/api/admin/subscriptions',  require('./routes/api/adminSubscriptionRoutes'));
-app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
 app.use('/api/admin', require('./routes/api/adminNotificationRoutes'));
 app.use('/api/admin', require('./routes/api/adminReportRoutes')); 
 app.use('/api/admin', require('./routes/api/adminSupportRoutes.js')); 
