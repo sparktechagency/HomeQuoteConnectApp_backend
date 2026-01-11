@@ -10,32 +10,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout GitHub repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup SSH (GitHub Secret থেকে private key)
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_KEY }}
 
-      # 3️⃣ Copy project files to server (NO DELETE)
       - name: Copy project files to server
         run: |
           rsync -az \
-            -e "ssh -i ~/.ssh/id_ed25519" \
             --exclude=".git" \
             --exclude="node_modules" \
             --exclude=".env" \
             ./ quotocloud@${{ secrets.VM_HOST }}:/home/quotocloud/HomeQuoteConnectApp_backend
 
-      # 4️⃣ Install dependencies & restart app using PM2
       - name: Install dependencies & restart app
         run: |
-          ssh -i ~/.ssh/id_ed25519 quotocloud@${{ secrets.VM_HOST }} << 'EOF'
+          ssh quotocloud@${{ secrets.VM_HOST }} << 'EOF'
             cd /home/quotocloud/HomeQuoteConnectApp_backend
             npm install --production
             pm2 restart homequote-backend || pm2 start index.js --name homequote-backend
