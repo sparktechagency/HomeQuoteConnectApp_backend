@@ -64,6 +64,14 @@ app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined'));
 app.set('io', io);
 require('./socket/initializeSockets')(io);
 
+app.get('/', (req, res) => {
+  res.json({ message: 'MyQuote API is live! Use /api/health' });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'MyQuote backend is running!' });
+});
+
 // ✅ Routes
 app.use('/api/admin/credits', require('./routes/api/adminCreditRoutes.js'));
 app.use('/api/admin/subscriptions', require('./routes/api/adminSubscriptionRoutes'));
@@ -71,7 +79,7 @@ app.use('/api/admin/categories', require('./routes/api/adminCategoryRoutes'));
 app.use('/api/admin/background-checks', require('./routes/api/adminBackgroundCheckRoutes'));
 
 app.use('/api/reports', require('./routes/api/reportRoutes'));
-app.use('/api/health', require('./routes/api/healthRoutes'));
+// app.use('/api/health', require('./routes/api/healthRoutes'));
 app.use('/api/auth', require('./routes/api/authRoutes'));
 app.use('/api/chats', require('./routes/api/chatRoutes'));
 app.use('/api/payments', require('./routes/api/paymentRoutes'));
@@ -133,13 +141,7 @@ app.use('/api', require('./routes/api/contentRoutes'));
 // app.use('/api/api/background-check', ...);
 
 
-app.get('/', (req, res) => {
-  res.json({ message: 'MyQuote API is live! Use /api/health' });
-});
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'MyQuote backend is running!' });
-});
 
 
 
@@ -174,9 +176,9 @@ app.use(errorHandler);
 // ----------------thats for Live host when gitpush host--------------
 
 
-const PORT = process.env.PORT || 8080;        
-                  
+const PORT = process.env.PORT || 8080;
+const HOST = '0.0.0.0';
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });

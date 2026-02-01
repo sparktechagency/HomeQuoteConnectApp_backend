@@ -20,6 +20,10 @@ All socket events are namespaced within the same `io` instance.
 
 ---
 
+
+
+
+
 ## 🚀 Socket Connection Flow
 
 1. Frontend connects to the socket server:
